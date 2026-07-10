@@ -107,10 +107,10 @@ def e1_headline(days=3, n_funcs=80, seed=7):
             seed_results = []
             for s in SEEDS:
                 inv = make_invocation_trace(days=days, n_funcs=n_funcs,
-                                            seed=s, max_events=500, use_real=(s == 7))
+                                            seed=s, max_events=300, use_real=(s == 7))
                 if inv is None:
                     inv = make_invocation_trace(days=days, n_funcs=n_funcs,
-                                                seed=s, max_events=500, use_real=False)
+                                                seed=s, max_events=300, use_real=False)
                 g = run_policy("Greedy", inv, trace_all, area=area)
                 gc = g["carbon"].sum()
                 r = run_policy(pol, inv, trace_all, area=area)
@@ -132,10 +132,10 @@ def e2_signal(days=3, n_funcs=80, seed=7):
         seed_results = []
         for s in SEEDS:
             inv = make_invocation_trace(days=days, n_funcs=n_funcs,
-                                        seed=s, max_events=500, use_real=(s==7))
+                                        seed=s, max_events=300, use_real=(s==7))
             if inv is None:
                 inv = make_invocation_trace(days=days, n_funcs=n_funcs,
-                                            seed=s, max_events=500, use_real=False)
+                                            seed=s, max_events=300, use_real=False)
             g = run_policy("Greedy", inv, trace)
             gc = g["carbon"].sum()
             r = run_policy("CarbonShift", inv, trace, use_marginal=use_marginal)
@@ -153,10 +153,10 @@ def e3_horizon(days=3, n_funcs=80, seed=7,
                H_values=(1, 3, 6, 9, 12, 18, 24, 36, 48, 60)):
     trace = make_marginal_trace("R", days=days, seed=3, use_real=False)
     inv = make_invocation_trace(days=days, n_funcs=n_funcs,
-                                seed=seed, max_events=500, use_real=True)
+                                seed=seed, max_events=300, use_real=True)
     if inv is None:
         inv = make_invocation_trace(days=days, n_funcs=n_funcs,
-                                    seed=seed, max_events=500, use_real=False)
+                                    seed=seed, max_events=300, use_real=False)
     g = run_policy("Greedy", inv, trace); gc = g["carbon"].sum()
     rows = []
     for H in H_values:
@@ -197,10 +197,10 @@ def e5_slack(days=3, n_funcs=80, seed=7,
              sigma_values=(0, 1, 3, 6, 9, 12, 15, 18)):
     trace = make_marginal_trace("R", days=days, seed=3, use_real=False)
     inv = make_invocation_trace(days=days, n_funcs=n_funcs,
-                                seed=seed, max_events=500, use_real=True)
+                                seed=seed, max_events=300, use_real=True)
     if inv is None:
         inv = make_invocation_trace(days=days, n_funcs=n_funcs,
-                                    seed=seed, max_events=500, use_real=False)
+                                    seed=seed, max_events=300, use_real=False)
     g = run_policy("Greedy", inv, trace); gc = g["carbon"].sum()
     rows = []
     for sm in sigma_values:
@@ -220,10 +220,10 @@ def e6_gameability(days=3, n_funcs=80, seed=7):
         seed_results = []
         for s in SEEDS:
             inv = make_invocation_trace(days=days, n_funcs=n_funcs,
-                                        seed=s, max_events=500, use_real=(s==7))
+                                        seed=s, max_events=300, use_real=(s==7))
             if inv is None:
                 inv = make_invocation_trace(days=days, n_funcs=n_funcs,
-                                            seed=s, max_events=500, use_real=False)
+                                            seed=s, max_events=300, use_real=False)
             if inflate:
                 inv = inv.copy()
                 inv["deadline"] = (inv["deadline"] * 2).astype(int)

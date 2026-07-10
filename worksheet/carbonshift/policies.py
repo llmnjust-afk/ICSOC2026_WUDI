@@ -255,7 +255,7 @@ def _temporal_defer(job, ctx: Context, use_marginal: bool, long: bool) -> dict:
     sigma = job["deadline"] - job["tau"]
     if sigma <= 1:
         return greedy(job, ctx)
-    H = SLOTS_PER_DAY if long else min(ctx.horizon, sigma)
+    H = 48 if long else min(ctx.horizon, sigma)
     areas = _eligible_areas(job, ctx)
     col = "marginal" if use_marginal else "average"
     best_q, best = np.inf, None

@@ -86,11 +86,11 @@ def fetch_marginal(ba: str = "CAISO_NORTH", hours: int = 24,
                    username: str | None = None,
                    password: str | None = None) -> pd.DataFrame | None:
     """Fetch `hours` of historical marginal intensity (co2_moer) for one
-    balancing authority.  Returns a DataFrame with columns:
-        slot, marginal (gCO2/kWh), ba, surplus
+    balancing authority using WattTime v3 API.  Returns a DataFrame with
+    columns: slot, marginal (gCO2/kWh), ba, surplus
 
-    Returns None (and logs a warning) if credentials are missing or the
-    fetch fails, so the caller can fall back to the mock trace.
+    The v3 API returns MOER in lbs/MWh; we convert to gCO2/kWh
+    (1 lb/MWh = 0.4536 g/kWh).
     """
     username = username or os.environ.get("WATTTIME_USERNAME")
     password = password or os.environ.get("WATTTIME_PASSWORD")
@@ -107,15 +107,19 @@ def fetch_marginal(ba: str = "CAISO_NORTH", hours: int = 24,
         return None
     end = datetime.now(timezone.utc)
     start = end - timedelta(hours=hours)
-    url = (f"{V3}/historical?signal_type=co2_moer&ba={ba}"
-           f"&start={start.isoformat()}&end={end.isoformat()}")
-    log.info("fetching WattTime MOER for %s over %d h", ba, hours)
+    url = "https://api.watttime.org/v3/historical"
+    params = {
+        "signal_type": "co2_moer",
+        "region": ba,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+    }
+    headers = {"Authorization": f"Bearer {token}"}
+    log.info("fetching WattTime v3 MOER for %s over %d h", ba, hours)
     try:
-        r = requests.get(url, timeout=60,
-                         headers={"Authorization": f"Bearer {token}"})
+        r = requests.get(url, headers=headers, params=params, timeout=60)
         if r.status_code != 200:
-            log.warning("WattTime historical HTTP %d: %s",
-                         r.status_code, r.text[:150])
+            log.warning("WattTime v3 HTTP %d: %s", r.status_code, r.text[:150])
             return None
         data = r.json().get("data", [])
         if not data:
@@ -123,16 +127,16 @@ def fetch_marginal(ba: str = "CAISO_NORTH", hours: int = 24,
             return None
         rows = []
         for i, pt in enumerate(data):
-            # MOER is in lbs/MWh; convert to gCO2/kWh (1 lb/MWh = 0.4536 g/kWh)
-            moer_lbs = pt.get("value", pt.get("moer", np.nan))
+            # MOER value is in lbs/MWh; convert to gCO2/kWh
+            moer_lbs = pt.get("value", np.nan)
             mu = moer_lbs * 0.4536 if moer_lbs is not None else np.nan
             rows.append({"slot": i, "marginal": mu, "ba": ba})
         df = pd.DataFrame(rows)
-        # surplus = below the 15th percentile (renewable-surplus window)
         thr = df["marginal"].quantile(0.15)
         df["surplus"] = df["marginal"] < thr
-        log.info("WattTime load complete: %d points, mu in [%.0f, %.0f] g/kWh",
-                  len(df), df["marginal"].min(), df["marginal"].max())
+        log.info("WattTime load complete: %d points, mu in [%.1f, %.1f] g/kWh, "
+                  "%d surplus slots", len(df), df["marginal"].min(),
+                  df["marginal"].max(), int(df["surplus"].sum()))
         return df
     except Exception as e:                                       # noqa: BLE001
         log.warning("WattTime fetch error: %s", e)
