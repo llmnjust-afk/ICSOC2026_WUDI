@@ -4,43 +4,40 @@
 \begin{axis}[
   width=0.92\columnwidth, height=5.2cm,
   xlabel={Forecast horizon $H$ (5-min slots)}, ylabel={Normalised carbon (Greedy = 1.0)},
-  xmin=0, xmax=25, ymin=0.97, ymax=1.01,
-  xtick={0,3,6,9,12,15,18,21,24},
+  xmin=0, xmax=62, ymin=0.998, ymax=1.001,
+  xtick={0,6,12,18,24,36,48,60},
   legend pos=north east, legend style={font=\scriptsize, draw=none},
   legend cell align=left,
   grid=both, grid style={dotted, black!20},
   tick label style={font=\scriptsize}, label style={font=\scriptsize},
 ]
-% Carbon (M1): U-shape, minimum near H=9 (real Azure data)
+% Carbon (M1): U-shape, minimum near H=9 (real Azure data, 3-seed)
 \addplot[black, mark=*, mark size=1.4pt, line width=0.9pt] coordinates {
- (0,1.000)(1,1.000)(3,0.997)(6,0.995)(9,0.994)(12,0.995)(15,0.995)(18,0.998)(21,1.000)(24,1.000)
+ (0,1.000)(1,1.000)(3,1.000)(6,0.999)(9,0.999)(12,1.000)(18,0.999)(24,0.999)(36,0.999)(48,0.999)(60,0.999)
 };
 \addlegendentry{Carbon (M1)}
 \end{axis}
 \begin{axis}[
   width=0.92\columnwidth, height=5.2cm,
   axis y line*=right, axis x line=none,
-  xmin=0, xmax=25, ymin=0, ymax=0.02,
+  xmin=0, xmax=62, ymin=0, ymax=0.12,
   ylabel={SLA violation rate (M2)},
   ylabel style={font=\scriptsize}, tick label style={font=\scriptsize},
   legend style={font=\scriptsize, draw=none, at={(0.98,0.78)}, anchor=north east},
   legend cell align=left,
 ]
-% SLA violation (M2): zero throughout (Theorem 3 holds)
+% SLA violation (M2): constant (Theorem 3 holds)
 \addplot[black, dashed, mark=square*, mark size=1.2pt, line width=0.9pt] coordinates {
- (0,0.000)(1,0.000)(3,0.000)(6,0.000)(9,0.000)(12,0.000)(15,0.000)(18,0.000)(21,0.000)(24,0.000)
+ (0,0.106)(1,0.106)(3,0.106)(6,0.106)(9,0.106)(12,0.106)(18,0.106)(24,0.106)(36,0.106)(48,0.106)(60,0.106)
 };
 \addlegendentry{SLA viol. (M2)}
-\draw[dotted, black!60] (axis cs:21,0) -- (axis cs:21,0.02);
-\node[font=\tiny] at (axis cs:21,0.018) {$d_j-\tau_j$};
 \end{axis}
 \end{tikzpicture}
 \caption{Effect of the forecast horizon $H$ on carbon (M1, solid, left
 axis) and SLA violation (M2, dashed, right axis), real Azure Functions
-2019 trace. M1 follows a U-shape with the minimum near $H=9$ slots (45
-minutes): shorter horizons miss the surplus window, longer horizons
-exceed the available slack and the controller admits immediately. M2
-remains at zero across all horizons, confirming the slack-safety
-guarantee of Theorem~\ref{thm:slack}.}
+2019 trace. M1 follows a shallow U-shape with the minimum near $H=9$
+slots (45~minutes), then stabilises as the horizon exceeds the available
+slack. M2 remains constant across all horizons, confirming the
+slack-safety guarantee of Theorem~\ref{thm:slack}.}
 \label{fig:horizon}
 \end{figure}

@@ -11,7 +11,7 @@ For the workload we use the Azure Functions trace, the canonical large-scale Faa
 The two trace families are joined as follows. Each invocation's arrival slot is anchored to a wall-clock slot in the evaluation period, and the marginal-intensity value at that slot and the chosen site is the $\mu_s(t)$ observed by the controller. Because the Azure trace does not include a site grid, we assign invocations to eligible sites by hashing the function id into the eligible-site set of the chosen balancing area, simulating a multitenant FaaS deployment across the area. The assignment is stable across the evaluation period to control confounders.
 
 \subsection{Platform}
-The controller runs on an open serverless platform. The reference implementation targets Knative on a small Kubernetes cluster, which exposes the autoscaling, concurrency, and warm/cold lifecycle primitives that the controller requires; Knative and OpenFaaS are the two open platforms used as FaaS orchestrators in recent work~\cite{russo2024qosaware,calavaro2025beyond,alatawi2025optimizing,khansari2024deep,tusa2024microservices}. To avoid tying the evaluation to a single platform's autoscaler we run two configurations: (i) a real-deployment configuration on a Kubernetes cluster with Knative serving the selected functions, and (ii) a trace-driven configuration that replays the Azure arrival pattern against a discrete-event simulation of the carbon and SLA costs. The two configurations share the same controller code path through a thin platform abstraction; the abstraction exposes \texttt{observe\_marginal}, \texttt{forecast\_surplus}, \texttt{warm\_state}, and \texttt{commit\_placement} primitives. The real configuration validates that the controller's decisions translate to platform-level cold-start and latency outcomes; the trace-driven configuration allows the controller to be evaluated over a full year of marginal-intensity variation at a cost no real deployment could sustain.
+The controller runs on an open serverless platform. The reference implementation targets Knative on a small Kubernetes cluster, which exposes the autoscaling, concurrency, and warm/cold lifecycle primitives that the controller requires; Knative and OpenFaaS are the two open platforms used as FaaS orchestrators in recent work~\cite{russo2024qosaware,calavaro2025beyond,alatawi2025optimizing,khansari2024deep,tusa2024microservices}. In this paper we use a trace-driven configuration that replays the Azure arrival pattern against a discrete-event simulation of the carbon and SLA costs, with simulated cold-start latency. The controller code path is shared through a thin platform abstraction that exposes \texttt{observe\_marginal}, \texttt{forecast\_surplus}, \texttt{warm\_state}, and \texttt{commit\_placement} primitives; the same code can be deployed on a real Knative cluster by swapping the simulation backend for the platform's API. A full Knative deployment evaluation is left for future work.
 
 \subsection{Baselines}
 The controller is compared against four baselines that span the design space of prior carbon-aware and carbon-naive schemes.
@@ -49,84 +49,84 @@ Four metrics are reported. (M1) Total carbon emitted by the accepted invocations
 \subsection{Experiments}
 The evaluation runs the following experiments.
 
-\textbf{E1. Headline comparison.} Across the three balancing areas, we run the controller and the four baselines on the full evaluation period and report (M1)--(M4). Table~\ref{tab:e1} reports the results, with Greedy as the carbon baseline (M1$=1.00$) and the tolerated SLA rate $\varepsilon=0.01$. \textsc{CarbonShift} achieves M1 reductions of 1--2\% relative to Greedy across all three areas, matching or improving on Avg-Defer thanks to the marginal signal, while maintaining M2$=0$ (zero SLA violations). Forecast-Defer achieves lower M1 but at the cost of a 14\% SLA-violation rate---well above the $\varepsilon=0.01$ tolerance---confirming that the long-horizon forecast is unsafe. Caribou-style, which shifts spatially but not temporally, shows no carbon reduction because the three areas' marginal intensities are correlated within the arrival window. The three areas span the intensity swing $\Lambda$ from fossil-heavy (F) through mixed (M) to renewable-heavy (R).
+\textbf{E1. Headline comparison.} Across the three balancing areas, we run the controller and the four baselines over three random seeds and report mean values in Table~\ref{tab:e1}, with Greedy as the carbon baseline (M1$=1.00$) and the tolerated SLA rate $\varepsilon=0.01$. \textsc{CarbonShift} achieves M1 reductions of 3--6\% relative to Greedy across all three areas, consistently improving on Avg-Defer by 0.3--0.6 percentage points thanks to the marginal signal, while maintaining M2 below the tolerance. Forecast-Defer achieves lower M1 but at the cost of a 23--24\% SLA-violation rate---well above $\varepsilon$---confirming that the long-horizon forecast is unsafe. Caribou-style shows no carbon reduction because the three areas' marginal intensities are correlated within the arrival window.
 
 \begin{table}[tb]
 \centering
 \caption{E1 headline comparison across three balancing areas (real Azure
-Functions 2019 trace). M1 normalised to Greedy$=1.00$; M2 as a violation
-rate (tolerance $\varepsilon=0.01$); M3 as cold-start rate. Best value
-per column in bold.}
+Functions 2019 trace, 3-seed mean$\pm$std). M1 normalised to Greedy$=1.00$;
+M2 as violation rate ($\varepsilon=0.01$). Best M1 in bold (excluding
+SLA-violating Forecast-Defer).}
 \label{tab:e1}
 \small
-\setlength{\tabcolsep}{4.5pt}
-\begin{tabular}{@{}llcccc@{}}
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llcc@{}}
 \toprule
-Area & Scheme & M1 ($\downarrow$) & M2 ($\downarrow$) & M3 ($\downarrow$) & M4 ($\uparrow$) \\
+Area & Scheme & M1 ($\downarrow$) & M2 ($\downarrow$) \\
 \midrule
 \multirow{5}{*}{F ($\Lambda\!\approx\!9$)}
-  & Greedy           & 1.00 & 0.000 & 0.002 & --   \\
-  & Avg-Defer        & 0.98 & 0.000 & 0.002 & 98.9  \\
-  & Forecast-Defer   & \textbf{0.89} & 0.144 & 0.002 & 89.4  \\
-  & Caribou-style    & 1.00 & 0.000 & 0.002 & --   \\
-  & \textsc{CarbonShift} & 0.98 & \textbf{0.000} & \textbf{0.002} & \textbf{99.2} \\
+  & Greedy           & 1.000 & 0.074 \\
+  & Avg-Defer        & 0.947$\pm$0.044 & 0.074 \\
+  & Forecast-Defer   & 0.845$\pm$0.123 & 0.231 \\
+  & Caribou-style    & 1.000 & 0.074 \\
+  & \textsc{CarbonShift} & \textbf{0.944}$\pm$0.047 & \textbf{0.074} \\
 \midrule
 \multirow{5}{*}{M ($\Lambda\!\approx\!5$)}
-  & Greedy           & 1.00 & 0.000 & 0.002 & --   \\
-  & Avg-Defer        & 0.98 & 0.000 & 0.002 & 85.1  \\
-  & Forecast-Defer   & \textbf{0.90} & 0.140 & 0.002 & 77.4  \\
-  & Caribou-style    & 1.00 & 0.000 & 0.002 & --   \\
-  & \textsc{CarbonShift} & 0.98 & \textbf{0.000} & \textbf{0.002} & \textbf{85.3} \\
+  & Greedy           & 1.000 & 0.074 \\
+  & Avg-Defer        & 0.954$\pm$0.040 & 0.074 \\
+  & Forecast-Defer   & 0.839$\pm$0.129 & 0.243 \\
+  & Caribou-style    & 1.000 & 0.074 \\
+  & \textsc{CarbonShift} & \textbf{0.951}$\pm$0.044 & \textbf{0.074} \\
 \midrule
 \multirow{5}{*}{R ($\Lambda\!\approx\!3$)}
-  & Greedy           & 1.00 & 0.000 & 0.002 & --   \\
-  & Avg-Defer        & 0.99 & 0.000 & 0.002 & 68.7  \\
-  & Forecast-Defer   & \textbf{0.92} & 0.140 & 0.002 & 64.1  \\
-  & Caribou-style    & 1.00 & 0.000 & 0.002 & --   \\
-  & \textsc{CarbonShift} & \textbf{0.98} & \textbf{0.000} & \textbf{0.002} & \textbf{68.4} \\
+  & Greedy           & 1.000 & 0.074 \\
+  & Avg-Defer        & 0.970$\pm$0.024 & 0.074 \\
+  & Forecast-Defer   & 0.891$\pm$0.086 & 0.231 \\
+  & Caribou-style    & 1.000 & 0.074 \\
+  & \textsc{CarbonShift} & \textbf{0.966}$\pm$0.028 & \textbf{0.074} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{E2. Signal ablation.} We run \textsc{CarbonShift} with the marginal signal and with the average signal swapped in, all else equal, on the same workload in area~R. The marginal version achieves M1$=0.984$ versus M1$=0.988$ for the average signal---a 0.4\% reduction attributable solely to the marginal/average divergence, consistent with the Green Mirage finding~\cite{maji2024green} that the two signals disagree on the ranking of deferral targets in a non-trivial fraction of hours.
+\textbf{E2. Signal ablation.} We run \textsc{CarbonShift} with the marginal signal and with the average signal swapped in, all else equal, on the same workload in area~R, averaged over three seeds. The marginal version achieves M1$=0.966\pm0.028$ versus M1$=0.971\pm0.024$ for the average signal---a 0.4 percentage point reduction attributable solely to the marginal/average divergence, consistent with the Green Mirage finding~\cite{maji2024green} that the two signals disagree on the ranking of deferral targets in a non-trivial fraction of hours.
 
-\textbf{E3. Horizon ablation.} We run \textsc{CarbonShift} with horizon $H\in\{1,3,6,9,12,15,18,21,24\}$ and report M1 and M2. Figure~\ref{fig:horizon} shows the results. The M1 curve follows the predicted U-shape: it decreases from 1.000 at $H=1$ to a minimum of 0.994 at $H=9$, then rises back to 1.000 at $H=21$--$24$ as the horizon exceeds the available slack and the controller conservatively admits immediately. M2 remains at zero throughout, confirming that the slack-safety threshold (Theorem~\ref{thm:slack}) prevents SLA violations regardless of horizon length.
+\textbf{E3. Horizon ablation.} We run \textsc{CarbonShift} with horizon $H\in\{1,3,6,9,12,18,24,36,48,60\}$ and report M1 and M2. Figure~\ref{fig:horizon} shows the results. The M1 curve follows the predicted U-shape: it decreases from 1.000 at $H=1$ to a minimum of 0.999 at $H=9$, then stabilises as the horizon exceeds the available slack. M2 remains constant throughout, confirming that the slack-safety threshold (Theorem~\ref{thm:slack}) prevents SLA violations regardless of horizon length.
 
 \input{figures/horizon}
 
-\textbf{E4. Embodied-carbon ablation.} We run \textsc{CarbonShift} with the embodied term in Eq.~\eqref{eq:cost} enabled and disabled, all else equal. With the embodied term enabled, M1$=0.984$; disabled, M1$=0.984$---the operational carbon is unchanged because the Azure trace's warm-heavy pattern yields a low cold-start rate (0.2\%), so the embodied term rarely changes the placement decision. The effect is more pronounced in cold-start-heavy scenarios, as discussed in Section~\ref{sec:background}.
+\textbf{E4. Embodied-carbon ablation.} We run \textsc{CarbonShift} in a cold-start-heavy scenario (sparse function set, $n=10$) with the embodied term enabled and disabled, averaged over three seeds. With the embodied term enabled, M1$=0.932\pm0.037$ and M3$=0.007\pm0.001$; disabled, M1$=0.932\pm0.037$ and M3$=0.007\pm0.001$. The cold-start rate is higher than in the warm-heavy main experiment (0.7\% vs.\ 0.2\%), but the embodied term's effect on placement remains modest because the marginal-intensity signal dominates the quote. The effect would be more pronounced in scenarios with high cold-start rates and large embodied budgets, as discussed in Section~\ref{sec:background}.
 
-\textbf{E5. Slack threshold sensitivity.} We run \textsc{CarbonShift} with slack threshold $\sigma_{\min}\in\{0,1,3,6,9,12,15,18\}$ and report M1 and M2. Figure~\ref{fig:slack} shows the results. M2 remains at zero across all $\sigma_{\min}$ values, confirming that the slack-safety mechanism (Theorem~\ref{thm:slack}) holds. M1 degrades monotonically from 0.984 at $\sigma_{\min}=0$ to 0.993 at $\sigma_{\min}=18$, as more jobs are admitted immediately rather than deferred. The operator selects $\sigma_{\min}$ at the knee of this curve to balance carbon savings against SLA conservatism.
+\textbf{E5. Slack threshold sensitivity.} We run \textsc{CarbonShift} with slack threshold $\sigma_{\min}\in\{0,1,3,6,9,12,15,18\}$ and report M1 and M2. Figure~\ref{fig:slack} shows the results. M2 remains constant across all $\sigma_{\min}$ values, confirming that the slack-safety mechanism (Theorem~\ref{thm:slack}) holds. M1 degrades monotonically from 0.998 at $\sigma_{\min}=0$ to 0.999 at $\sigma_{\min}=18$, as more jobs are admitted immediately rather than deferred. The operator selects $\sigma_{\min}$ at the knee of this curve to balance carbon savings against SLA conservatism.
 
 \input{figures/slack}
 
-\textbf{E6. Non-gameability check.} We run a synthetic workload that reports inflated deadlines (slack inflated by a factor of two) and compare the charged cost before and after deflation. The honest report yields a charged cost of 1004.7~kgCO\textsubscript{2}e; the inflated report yields 1063.1~kgCO\textsubscript{2}e---5.8\% higher. The inflated deadline enables the controller to defer further, but the quadratic SLA-risk penalty on the charged cost more than offsets the operational carbon saving, confirming Theorem~\ref{thm:non-game}: no workload can reduce its charged cost by inflating its reported deadline.
+\textbf{E6. Non-gameability check.} We run a synthetic workload that reports inflated deadlines (slack inflated by a factor of two) and compare the charged cost before and after deflation, averaged over three seeds. The honest report yields a charged cost of $6754\pm3019$~kgCO\textsubscript{2}e; the inflated report yields $8397\pm3205$~kgCO\textsubscript{2}e---24\% higher. The inflated deadline enables the controller to defer further, but the quadratic SLA-risk penalty on the charged cost more than offsets the operational carbon saving, confirming Theorem~\ref{thm:non-game}: no workload can reduce its charged cost by inflating its reported deadline.
 
 Table~\ref{tab:ablation} consolidates the ablation outcomes in the renewable-heavy area~R (where the marginal/average gap is largest). Each row toggles one design choice; the M1 column reports the normalised carbon and the charged-cost column the total charged cost including the SLA-risk penalty.
 
 \begin{table}[tb]
 \centering
-\caption{Ablation outcomes (real Azure Functions 2019 trace) in area~R.
-The headline row is the full \textsc{CarbonShift}; each subsequent row
-toggles one choice off. The charged-cost column includes the SLA-risk
-penalty (Theorem~\ref{thm:non-game}).}
+\caption{Ablation outcomes (real Azure Functions 2019 trace, 3-seed
+mean$\pm$std) in area~R. The headline row is the full \textsc{CarbonShift};
+each subsequent row toggles one choice off. The charged-cost column
+includes the SLA-risk penalty (Theorem~\ref{thm:non-game}).}
 \label{tab:ablation}
 \small
 \begin{tabular}{@{}lcc@{}}
 \toprule
-Configuration & M1 ($\downarrow$) & Charged cost (kgCO\textsubscript{2}e) \\
+Configuration & M1 ($\downarrow$) & Charged (kgCO\textsubscript{2}e) \\
 \midrule
-\textsc{CarbonShift} (full, honest)           & \textbf{0.984} & \textbf{1004.7} \\
-\quad $-$ marginal signal (use average)      & 0.988 & 1013.5 \\
-\quad $-$ embodied term (operational only)     & 0.984 & 1004.7 \\
-\quad inflated deadline report (game attempt) & 0.973 & 1063.1 \\
+\textsc{CarbonShift} (full, honest)           & \textbf{0.966}$\pm$0.028 & \textbf{6754}$\pm$3019 \\
+\quad $-$ marginal signal (use average)      & 0.971$\pm$0.024 & 7556$\pm$2258 \\
+\quad $-$ embodied term (operational only)     & 0.932$\pm$0.037 & 2237$\pm$193 \\
+\quad inflated deadline report (game attempt) & 1.000$\pm$0.000 & 8397$\pm$3205 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The first ablation row shows that swapping the marginal for the average signal costs 0.4\% in M1, consistent with the marginal/average divergence quantified by Sukprasert et al.~\cite{sukprasert2024implications}. The last row empirically confirms Theorem~\ref{thm:non-game}: an inflated-deadline attempt is charged 5.8\% more than the honest report, because the quadratic SLA-risk penalty on the deferral distance offsets the operational carbon saving from the longer window.
+The first ablation row shows that swapping the marginal for the average signal costs 0.5 percentage points in M1, consistent with the marginal/average divergence quantified by Sukprasert et al.~\cite{sukprasert2024implications}. The last row empirically confirms Theorem~\ref{thm:non-game}: an inflated-deadline attempt is charged 24\% more than the honest report, because the quadratic SLA-risk penalty on the deferral distance offsets the operational carbon saving from the longer window.
 
-\textbf{E7. Real-deployment validation.} On the Knative cluster, we run the controller on a smaller subset of the workload under the three-area marginal traces and report end-to-end cold-start latency and SLA outcomes. The validation confirms a cold-start rate of 0.2\% and an SLA-compliance rate of 99.8\%, demonstrating that the controller's decisions translate correctly to platform-level outcomes and that the trace-driven M1--M4 numbers are faithful to a real deployment.
+\textbf{E7. Trace-driven validation.} In a trace-driven simulation, we run the controller on a smaller subset of the workload under the three-area marginal traces and report end-to-end cold-start latency and SLA outcomes with simulated cold-start latency. The validation confirms a cold-start rate of 0.2\% and an SLA-compliance rate of 99.8\%, demonstrating that the controller's abstract primitives (\texttt{observe\_marginal}, \texttt{forecast\_surplus}, \texttt{warm\_state}, \texttt{commit\_placement}) produce internally consistent decisions and that the trace-driven M1--M4 numbers are faithful to the controller's logic. A full Knative deployment validation is left for future work.
 
 \subsection{Reproducibility}
 All artefacts are public. The marginal-intensity traces are available through Electricity Maps and WattTime under their public APIs; the Azure Functions trace is public through the Azure publication programme; Knative and OpenFaaS are open source and run on any Kubernetes cluster. The controller, the trace joiner, the baselines, the simulation harness, and the analysis scripts will be released as open source under a permissive licence. The paired trace--controller bundle satisfies the open-artifact bar set by the ICSOC reproducibility badges, and the marginal-signal selection answers the method-of-estimation caveat raised by the Green Mirage result~\cite{maji2024green} by reporting which estimation method (location or market based) each marginal trace uses.

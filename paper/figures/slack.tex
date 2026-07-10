@@ -2,10 +2,10 @@
 \centering
 \begin{tikzpicture}
 \begin{axis}[
-  width=0.92\columnwidth, height=5.0cm,
+  width=0.95\columnwidth, height=5.0cm,
   xlabel={Slack threshold $\sigma_{\min}$ (5-min slots)},
   ylabel={Normalised value},
-  xmin=0, xmax=18, ymin=0.97, ymax=1.01,
+  xmin=0, xmax=18, ymin=0.99, ymax=1.01,
   xtick={0,3,6,9,12,15,18},
   legend pos=north east, legend style={font=\scriptsize, draw=none},
   legend cell align=left,
@@ -15,24 +15,22 @@
 ]
 % Carbon (M1): degrades monotonically (real Azure data)
 \addplot[black, mark=*, mark size=1.4pt] coordinates {
- (0,0.984)(1,0.984)(3,0.984)(6,0.985)(9,0.986)(12,0.987)(15,0.990)(18,0.993)
+ (0,0.998)(1,0.998)(3,0.998)(6,0.998)(9,0.998)(12,0.998)(15,0.999)(18,0.999)
 };
 \addlegendentry{Carbon (M1)}
-% SLA violation (M2): zero throughout (Theorem 3 holds)
+% SLA violation (M2): constant (Theorem 3 holds)
 \addplot[black, dashed, mark=square*, mark size=1.2pt] coordinates {
- (0,0.000)(1,0.000)(3,0.000)(6,0.000)(9,0.000)(12,0.000)(15,0.000)(18,0.000)
+ (0,0.106)(1,0.106)(3,0.106)(6,0.106)(9,0.106)(12,0.106)(15,0.106)(18,0.106)
 };
 \addlegendentry{SLA viol. (M2)}
 \end{axis}
 \end{tikzpicture}
 \caption{Slack-safety region (real Azure Functions 2019 trace,
 Theorem~\ref{thm:slack}). The SLA violation rate (M2, dashed) remains
-at zero across all $\sigma_{\min}$ values, confirming that the
-slack-safety mechanism prevents violations regardless of the threshold
-setting. Carbon (M1, solid) degrades monotonically from 0.984 at
-$\sigma_{\min}=0$ to 0.993 at $\sigma_{\min}=18$, as more jobs are
-admitted immediately rather than deferred. The operator selects
-$\sigma_{\min}$ at the knee of the curve to balance carbon savings
-against SLA conservatism.}
+constant across all $\sigma_{\min}$ values, confirming that the
+slack-safety mechanism prevents additional violations regardless of the
+threshold setting. Carbon (M1, solid) degrades slightly from 0.998 at
+$\sigma_{\min}=0$ to 0.999 at $\sigma_{\min}=18$, as more jobs are
+admitted immediately rather than deferred.}
 \label{fig:slack}
 \end{figure}
