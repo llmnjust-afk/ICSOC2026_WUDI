@@ -21,6 +21,7 @@ import os
 import sys
 
 import pandas as pd
+import numpy as np
 
 # Make the package importable when run from the worksheet/ dir
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -59,12 +60,19 @@ def main(quick: bool = True):
     _section("E1  Headline comparison (Table 3): 5 policies x 3 areas")
     e1 = E.e1_headline(days=2 if quick else 7, n_funcs=40 if quick else 200)
     # pivot into a readable M1 table
-    m1 = e1.pivot(index="area", columns="policy", values="M1")
-    print("\n  M1 (normalised carbon, Greedy = 1.00):")
-    print(m1.to_string(float_format=lambda v: f"{v:.2f}"))
-    print(f"\n  M2 (SLA violation rate, tolerance eps=0.01):")
-    print(e1.pivot(index="area", columns="policy", values="M2")
-            .to_string(float_format=lambda v: f"{v:.3f}"))
+    m1 = e1.pivot(index="area", columns="policy", values="M1_mean")
+    m1_std = e1.pivot(index="area", columns="policy", values="M1_std")
+    print("\n  M1 (mean +/- std, Greedy = 1.00):")
+    for area in m1.index:
+        parts = []
+        for pol in m1.columns:
+            v = m1.loc[area, pol]
+            s = m1_std.loc[area, pol] if not np.isnan(m1_std.loc[area, pol]) else 0
+            parts.append(f"{pol}={v:.3f}+/-{s:.3f}")
+        print(f"    {area}: {', '.join(parts)}")
+    print(f"\n  M2 (SLA violation, mean):")
+    m2 = e1.pivot(index="area", columns="policy", values="M2_mean")
+    print(m2.to_string(float_format=lambda v: f"{v:.3f}"))
     _save_csv(e1, "E1_headline")
 
     # ---- E2: signal ablation ------------------------------------------

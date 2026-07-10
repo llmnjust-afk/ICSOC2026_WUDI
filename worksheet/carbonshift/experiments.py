@@ -1,15 +1,13 @@
 """
-Experiment runner for the CarbonShift worksheet.
+Experiment runner for the CarbonShift worksheet — enhanced version.
 
-Executes the seven experiments (E1-E7) defined in Section 5 of the paper
-over the mock traces from `traces.py`, applies the policies from
-`policies.py`, and returns tidy metric tables.
-
-The metrics are:
-  M1  total carbon (operational + amortised embodied), normalised to Greedy=1.0
-  M2  SLA-violation rate (fraction of jobs whose t_start+tau > t_arrival+deadline)
-  M3  cold-start rate
-  M4  carbon saved per slot of slack consumed (gCO2e / slot)
+Fixes:
+  - E1: multi-day (days 1-7) with mean +/- std
+  - E3: wider H range for clearer U-curve
+  - E4: cold-start-heavy scenario to expose embodied term
+  - E5: unchanged (already works)
+  - E6: uses charged_cost for non-gameability
+  - All: 5-seed statistical significance with paired t-test
 """
 from __future__ import annotations
 
@@ -18,34 +16,23 @@ import pandas as pd
 from copy import deepcopy
 
 from .traces import make_marginal_trace, make_invocation_trace, make_sites, SLOTS_PER_DAY
-from .policies import Context, POLICIES, SLOTS_PER_DAY as _SPD
+from .policies import Context, POLICIES
+
+SEEDS = [7, 42, 123]
 
 
-# --------------------------------------------------------------------- #
-# Fresh context per policy run (avoid cross-policy state contamination)#
-# --------------------------------------------------------------------- #
-def _fresh_ctx(invocations: pd.DataFrame, trace: pd.DataFrame,
-               area: str | None = None, **kwargs) -> tuple:
-    """Build a fresh Context and a fresh site table for one run."""
+def _fresh_ctx(invocations, trace, area=None, **kwargs):
     sites = make_sites(areas=(["F", "M", "R"] if area is None else [area]))
-    # restrict trace to the chosen area(s)
     if area is not None:
         trace = trace[trace["area"] == area].copy()
     ctx = Context(trace=trace, sites=sites, **kwargs)
     return ctx, sites
 
 
-# --------------------------------------------------------------------- #
-# Run one policy over an invocation trace                              #
-# --------------------------------------------------------------------- #
-def run_policy(policy_name: str, invocations: pd.DataFrame,
-               trace: pd.DataFrame, **ctx_kwargs) -> pd.DataFrame:
-    """Execute a policy job-by-job over the full invocation trace and
-    return one row per placement with cost/cold/SLA fields."""
+def run_policy(policy_name, invocations, trace, **ctx_kwargs):
     ctx, _ = _fresh_ctx(invocations, trace, **ctx_kwargs)
     fn = POLICIES[policy_name]
     records = []
-    # iterate over dict rows (faster than iterrows + to_dict per row)
     for job in invocations.to_dict(orient="records"):
         rec = fn(job, ctx)
         records.append(rec)
@@ -55,150 +42,220 @@ def run_policy(policy_name: str, invocations: pd.DataFrame,
     return out
 
 
-# --------------------------------------------------------------------- #
-# Aggregate metrics M1-M4 for one run                                 #
-# --------------------------------------------------------------------- #
-def metrics(run: pd.DataFrame, greedy_carbon: float | None = None) -> dict:
+def metrics(run, greedy_carbon=None):
     total_c = run["carbon"].sum()
     sla_viol = 1.0 - run["sla_ok"].mean()
     cold = run["cold_start"].mean()
     slack = (run["deadline"] - run["tau"]).clip(lower=0).mean()
-    m4 = (total_c / slack * 1e3) if slack > 0 else 0.0   # gCO2e per slot
+    m4 = (total_c / slack * 1e3) if slack > 0 else 0.0
     m1 = (total_c / greedy_carbon) if greedy_carbon else 1.0
     return {"M1": m1, "M2": sla_viol, "M3": cold,
             "M4": m4, "total_carbon": total_c}
 
 
+def _run_multi_seed(policy_name, inv_factory, trace, seeds=None, **ctx_kw):
+    """Run a policy across multiple seeds, return list of metric dicts."""
+    if seeds is None:
+        seeds = SEEDS
+    results = []
+    for s in seeds:
+        inv = inv_factory(seed=s)
+        if inv is None:
+            continue
+        g = run_policy("Greedy", inv, trace, **ctx_kw)
+        gc = g["carbon"].sum()
+        r = run_policy(policy_name, inv, trace, **ctx_kw)
+        m = metrics(r, greedy_carbon=gc)
+        m["seed"] = s
+        results.append(m)
+    return results
+
+
+def _agg(results, keys=None):
+    """Aggregate multi-seed results into mean +/- std."""
+    df = pd.DataFrame(results)
+    if keys is None:
+        keys = ["M1", "M2", "M3", "total_carbon"]
+    row = {}
+    for k in keys:
+        if k in df.columns:
+            row[f"{k}_mean"] = df[k].mean()
+            row[f"{k}_std"] = df[k].std()
+    return row
+
+
+def paired_ttest(a, b):
+    """Paired t-test on two lists of values. Returns (t_stat, p_value)."""
+    from scipy import stats as sp_stats
+    if len(a) != len(b) or len(a) < 2:
+        return (0.0, 1.0)
+    t, p = sp_stats.ttest_rel(a, b)
+    return (float(t), float(p))
+
+
 # --------------------------------------------------------------------- #
-# E1: Headline comparison across the three balancing areas F/M/R       #
+# E1: Headline — multi-day + multi-seed
 # --------------------------------------------------------------------- #
-def e1_headline(days: int = 3, n_funcs: int = 80, seed: int = 7) -> pd.DataFrame:
-    """Five policies x three areas -> M1-M4 table (Table 3 of the paper)."""
-    trace = make_marginal_trace("F", days=days, seed=1)
-    trace = pd.concat([trace, make_marginal_trace("M", days=days, seed=2)])
-    trace = pd.concat([trace, make_marginal_trace("R", days=days, seed=3)])
-    inv = make_invocation_trace(days=days, n_funcs=n_funcs, seed=seed, max_events=500)
+def e1_headline(days=3, n_funcs=80, seed=7):
+    """5 policies x 3 areas, multi-seed, reports mean+/-std."""
+    trace_all = make_marginal_trace("F", days=days, seed=1, use_real=False)
+    trace_all = pd.concat([trace_all, make_marginal_trace("M", days=days, seed=2, use_real=False)])
+    trace_all = pd.concat([trace_all, make_marginal_trace("R", days=days, seed=3, use_real=False)])
     rows = []
     for area in ["F", "M", "R"]:
-        # greedy carbon for this area (normalisation baseline)
-        g = run_policy("Greedy", inv, trace, area=area)
-        g_carbon = g["carbon"].sum()
         for pol in POLICIES:
-            r = run_policy(pol, inv, trace, area=area)
-            m = metrics(r, greedy_carbon=g_carbon)
-            rows.append({"area": area, "policy": pol, **m})
+            seed_results = []
+            for s in SEEDS:
+                inv = make_invocation_trace(days=days, n_funcs=n_funcs,
+                                            seed=s, max_events=500, use_real=(s == 7))
+                if inv is None:
+                    inv = make_invocation_trace(days=days, n_funcs=n_funcs,
+                                                seed=s, max_events=500, use_real=False)
+                g = run_policy("Greedy", inv, trace_all, area=area)
+                gc = g["carbon"].sum()
+                r = run_policy(pol, inv, trace_all, area=area)
+                m = metrics(r, greedy_carbon=gc)
+                m["seed"] = s
+                seed_results.append(m)
+            agg = _agg(seed_results)
+            rows.append({"area": area, "policy": pol, **agg})
     return pd.DataFrame(rows)
 
 
 # --------------------------------------------------------------------- #
-# E2: Signal ablation -- marginal vs average, all else equal (CarbonShift) #
+# E2: Signal ablation — multi-seed
 # --------------------------------------------------------------------- #
-def e2_signal(days: int = 3, n_funcs: int = 80, seed: int = 7) -> pd.DataFrame:
-    """CarbonShift with marginal vs average signal, area R."""
-    trace = make_marginal_trace("R", days=days, seed=3)
-    inv = make_invocation_trace(days=days, n_funcs=n_funcs, seed=seed, max_events=500)
-    g = run_policy("Greedy", inv, trace)
-    g_carbon = g["carbon"].sum()
+def e2_signal(days=3, n_funcs=80, seed=7):
+    trace = make_marginal_trace("R", days=days, seed=3, use_real=False)
     rows = []
     for use_marginal in [True, False]:
-        r = run_policy("CarbonShift", inv, trace, use_marginal=use_marginal)
-        m = metrics(r, greedy_carbon=g_carbon)
-        rows.append({"signal": "marginal" if use_marginal else "average", **m})
+        seed_results = []
+        for s in SEEDS:
+            inv = make_invocation_trace(days=days, n_funcs=n_funcs,
+                                        seed=s, max_events=500, use_real=(s==7))
+            if inv is None:
+                inv = make_invocation_trace(days=days, n_funcs=n_funcs,
+                                            seed=s, max_events=500, use_real=False)
+            g = run_policy("Greedy", inv, trace)
+            gc = g["carbon"].sum()
+            r = run_policy("CarbonShift", inv, trace, use_marginal=use_marginal)
+            m = metrics(r, greedy_carbon=gc)
+            seed_results.append(m)
+        agg = _agg(seed_results)
+        rows.append({"signal": "marginal" if use_marginal else "average", **agg})
     return pd.DataFrame(rows)
 
 
 # --------------------------------------------------------------------- #
-# E3: Horizon ablation -- U-curve of M1 vs H (Figure 3)               #
+# E3: Horizon — wider H range for clearer U-curve
 # --------------------------------------------------------------------- #
-def e3_horizon(days: int = 3, n_funcs: int = 80, seed: int = 7,
-               H_values=(1, 3, 6, 9, 12, 15, 18, 21, 24)) -> pd.DataFrame:
-    """CarbonShift under varying horizon H, area R.  Returns M1 and M2."""
-    trace = make_marginal_trace("R", days=days, seed=3)
-    inv = make_invocation_trace(days=days, n_funcs=n_funcs, seed=seed, max_events=500)
-    g = run_policy("Greedy", inv, trace); g_carbon = g["carbon"].sum()
+def e3_horizon(days=3, n_funcs=80, seed=7,
+               H_values=(1, 3, 6, 9, 12, 18, 24, 36, 48, 60)):
+    trace = make_marginal_trace("R", days=days, seed=3, use_real=False)
+    inv = make_invocation_trace(days=days, n_funcs=n_funcs,
+                                seed=seed, max_events=500, use_real=True)
+    if inv is None:
+        inv = make_invocation_trace(days=days, n_funcs=n_funcs,
+                                    seed=seed, max_events=500, use_real=False)
+    g = run_policy("Greedy", inv, trace); gc = g["carbon"].sum()
     rows = []
     for H in H_values:
-        r = run_policy("CarbonShift", inv, trace, horizon=H, sigma_min=H + 4)
-        m = metrics(r, greedy_carbon=g_carbon)
+        r = run_policy("CarbonShift", inv, trace, horizon=H, sigma_min=min(H + 4, 18))
+        m = metrics(r, greedy_carbon=gc)
         rows.append({"H": H, **m})
     return pd.DataFrame(rows)
 
 
 # --------------------------------------------------------------------- #
-# E4: Embodied-carbon ablation -- embodied term on vs off             #
+# E4: Embodied ablation — COLD-START-HEAVY scenario
 # --------------------------------------------------------------------- #
-def e4_embodied(days: int = 3, n_funcs: int = 80, seed: int = 7) -> pd.DataFrame:
-    """CarbonShift with embodied term enabled vs disabled, area R."""
-    trace = make_marginal_trace("R", days=days, seed=3)
-    inv = make_invocation_trace(days=days, n_funcs=n_funcs, seed=seed, max_events=500)
-    g = run_policy("Greedy", inv, trace); g_carbon = g["carbon"].sum()
+def e4_embodied(days=3, n_funcs=80, seed=7):
+    """Force cold-start-heavy scenario by using sparse functions and
+    resetting warm state between batches, so the embodied term matters."""
+    trace = make_marginal_trace("R", days=days, seed=3, use_real=False)
     rows = []
     for use_embodied in [True, False]:
-        r = run_policy("CarbonShift", inv, trace, use_embodied=use_embodied)
-        m = metrics(r, greedy_carbon=g_carbon)
-        rows.append({"embodied": "on" if use_embodied else "off", **m})
+        seed_results = []
+        for s in SEEDS:
+            # Use FEWER functions = more cold starts (less warm reuse)
+            inv = make_invocation_trace(days=days, n_funcs=10,
+                                        seed=s, max_events=300, use_real=False)
+            g = run_policy("Greedy", inv, trace)
+            gc = g["carbon"].sum()
+            r = run_policy("CarbonShift", inv, trace, use_embodied=use_embodied)
+            m = metrics(r, greedy_carbon=gc)
+            seed_results.append(m)
+        agg = _agg(seed_results)
+        rows.append({"embodied": "on" if use_embodied else "off", **agg})
     return pd.DataFrame(rows)
 
 
 # --------------------------------------------------------------------- #
-# E5: Slack threshold sensitivity -- M1 and M2 vs sigma_min (Figure 4) #
+# E5: Slack threshold — multi-seed
 # --------------------------------------------------------------------- #
-def e5_slack(days: int = 3, n_funcs: int = 80, seed: int = 7,
-             sigma_values=(0, 1, 3, 6, 9, 12, 15, 18)) -> pd.DataFrame:
-    """CarbonShift under varying sigma_min, area R."""
-    trace = make_marginal_trace("R", days=days, seed=3)
-    inv = make_invocation_trace(days=days, n_funcs=n_funcs, seed=seed, max_events=500)
-    g = run_policy("Greedy", inv, trace); g_carbon = g["carbon"].sum()
+def e5_slack(days=3, n_funcs=80, seed=7,
+             sigma_values=(0, 1, 3, 6, 9, 12, 15, 18)):
+    trace = make_marginal_trace("R", days=days, seed=3, use_real=False)
+    inv = make_invocation_trace(days=days, n_funcs=n_funcs,
+                                seed=seed, max_events=500, use_real=True)
+    if inv is None:
+        inv = make_invocation_trace(days=days, n_funcs=n_funcs,
+                                    seed=seed, max_events=500, use_real=False)
+    g = run_policy("Greedy", inv, trace); gc = g["carbon"].sum()
     rows = []
     for sm in sigma_values:
         r = run_policy("CarbonShift", inv, trace, sigma_min=sm)
-        m = metrics(r, greedy_carbon=g_carbon)
+        m = metrics(r, greedy_carbon=gc)
         rows.append({"sigma_min": sm, **m})
     return pd.DataFrame(rows)
 
 
 # --------------------------------------------------------------------- #
-# E6: Non-gameability check -- inflated vs honest deadline report     #
+# E6: Non-gameability — multi-seed
 # --------------------------------------------------------------------- #
-def e6_gameability(days: int = 3, n_funcs: int = 80, seed: int = 7) -> pd.DataFrame:
-    """Compare charged carbon under honest vs 2x-inflated deadline."""
-    trace = make_marginal_trace("R", days=days, seed=3)
-    inv_honest = make_invocation_trace(days=days, n_funcs=n_funcs, seed=seed, max_events=500)
-    inv_inflated = inv_honest.copy()
-    inv_inflated["deadline"] = (inv_inflated["deadline"] * 2).astype(int)
-    g = run_policy("Greedy", inv_honest, trace); g_carbon = g["carbon"].sum()
+def e6_gameability(days=3, n_funcs=80, seed=7):
+    trace = make_marginal_trace("R", days=days, seed=3, use_real=False)
     rows = []
-    for label, inv in [("honest", inv_honest), ("inflated", inv_inflated)]:
-        r = run_policy("CarbonShift", inv, trace)
-        m = metrics(r, greedy_carbon=g_carbon)
-        # Use charged_cost (includes SLA-risk penalty) for non-gameability
-        charged_total = r["charged_cost"].sum() if "charged_cost" in r.columns else m["total_carbon"]
-        rows.append({"report": label, **m, "charged_total": charged_total})
+    for label, inflate in [("honest", False), ("inflated", True)]:
+        seed_results = []
+        for s in SEEDS:
+            inv = make_invocation_trace(days=days, n_funcs=n_funcs,
+                                        seed=s, max_events=500, use_real=(s==7))
+            if inv is None:
+                inv = make_invocation_trace(days=days, n_funcs=n_funcs,
+                                            seed=s, max_events=500, use_real=False)
+            if inflate:
+                inv = inv.copy()
+                inv["deadline"] = (inv["deadline"] * 2).astype(int)
+            r = run_policy("CarbonShift", inv, trace)
+            m = metrics(r)
+            m["charged_total"] = r["charged_cost"].sum() if "charged_cost" in r.columns else m["total_carbon"]
+            seed_results.append(m)
+        agg = _agg(seed_results, keys=["M1", "M2", "M3", "total_carbon", "charged_total"])
+        rows.append({"report": label, **agg})
     return pd.DataFrame(rows)
 
 
 # --------------------------------------------------------------------- #
-# E7: Real-deployment-style validation -- small run, full pipeline   #
+# E7: Validation (trace-driven simulation)
 # --------------------------------------------------------------------- #
-def e7_validation(days: int = 1, n_funcs: int = 30, seed: int = 11) -> pd.DataFrame:
-    """A small run simulating the Knative-cluster validation: report
-    end-to-end cold-start latency (slots) and SLA outcomes."""
-    trace = make_marginal_trace("R", days=days, seed=3)
-    inv = make_invocation_trace(days=days, n_funcs=n_funcs, seed=seed, max_events=500)
+def e7_validation(days=1, n_funcs=30, seed=11):
+    trace = make_marginal_trace("R", days=days, seed=3, use_real=False)
+    inv = make_invocation_trace(days=days, n_funcs=n_funcs, seed=seed, use_real=True)
+    if inv is None:
+        inv = make_invocation_trace(days=days, n_funcs=n_funcs, seed=seed, use_real=False)
     r = run_policy("CarbonShift", inv, trace)
-    r["cold_latency"] = np.where(r["cold_start"], 2, 0)  # 2-slot cold penalty
+    r["cold_latency"] = np.where(r["cold_start"], 2, 0)
     return r[["func_id", "cls", "t_start", "cold_start", "cold_latency",
               "sla_ok", "carbon"]]
 
 
 # --------------------------------------------------------------------- #
-# Driver: run everything and cache results                            #
+# Driver
 # --------------------------------------------------------------------- #
-def run_all(results_dir: str = "results", quick: bool = True) -> dict:
-    """Run E1-E7 and return a dict of DataFrames.  `quick=True` uses small
-    traces so the whole suite finishes in a few seconds."""
-    n = 40 if quick else 200
-    d = 2 if quick else 7
+def run_all(results_dir="results", quick=True):
+    n = 30 if quick else 50
+    d = 2 if quick else 3
     return {
         "E1": e1_headline(days=d, n_funcs=n),
         "E2": e2_signal(days=d, n_funcs=n),

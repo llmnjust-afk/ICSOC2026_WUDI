@@ -207,3 +207,21 @@ def load_azure_invocations(day: int = 1, data_dir: str = DATA_DIR,
               sorted(df["cls"].unique()))
     _CACHE[cache_key] = df.copy()
     return df
+
+
+# --------------------------------------------------------------------- #
+# 4.  Multi-day loader for statistical significance                    #
+# --------------------------------------------------------------------- #
+def load_azure_multiday(days=None, max_funcs=80, max_events_per_day=500,
+                        seed=7):
+    """Load multiple days of the Azure trace for cross-day stability.
+    Returns a dict {day: DataFrame}."""
+    if days is None:
+        days = [1, 2, 3, 4, 5, 6, 7]
+    results = {}
+    for d in days:
+        df = load_azure_invocations(day=d, max_funcs=max_funcs,
+                                     max_events=max_events_per_day, seed=seed)
+        if df is not None:
+            results[d] = df
+    return results
