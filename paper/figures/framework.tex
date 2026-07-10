@@ -1,0 +1,100 @@
+\begin{figure}[tb]
+\centering
+\resizebox{0.97\columnwidth}{!}{%
+\begin{tikzpicture}[
+  font=\footnotesize,
+  >=Stealth,
+  block/.style={draw, rounded corners=2pt, align=center, minimum height=8mm,
+                minimum width=24mm, inner sep=2pt, line width=0.4pt},
+  sig/.style={block, fill=black!8},
+  ctrl/.style={block, fill=black!18, line width=0.6pt},
+  dec/.style={block, diamond, aspect=2, fill=black!12, inner sep=1pt},
+  site/.style={draw, rounded corners=1pt, align=center, minimum height=7mm,
+               minimum width=22mm, inner sep=2pt, fill=white},
+  arr/.style={->, line width=0.4pt},
+  lbl/.style={font=\scriptsize, midway, fill=white, inner sep=1pt}
+]
+
+% ---- External signal sources (left column) ----
+\node[sig] (em)  {Electricity\\Maps API};
+\node[sig, below=3mm of em]  (wt) {WattTime\\MOER API};
+\node[sig, below=3mm of wt]  (fc) {Day-ahead\\forecast};
+
+% ---- Workload source (top) ----
+\node[block, above=8mm of em, xshift=40mm] (inv) {FaaS invocations\\(Azure trace)};
+
+% ---- Controller block (centre) ----
+\node[ctrl, right=16mm of em, yshift=6mm, minimum width=46mm, minimum height=14mm]
+  (obs) {Marginal-intensity\\observer \& forecaster};
+
+\node[ctrl, below=3mm of obs, minimum width=46mm, minimum height=14mm]
+  (warm) {Warm/cold state\\\& embodied-cost tracker};
+
+\node[dec, below=4mm of warm, minimum width=42mm]
+  (ddec) {slack $\sigma_j > \sigma_{\min}$?};
+
+\node[ctrl, below=4mm of ddec, minimum width=46mm, minimum height=14mm]
+  (place) {Quote minimiser\\$(s^*,t^*)=\arg\min q_j$};
+
+% Bracket the controller components
+\begin{scope}[on background layer]
+\node[draw, dashed, rounded corners=3pt, inner sep=3mm,
+      fit=(obs)(warm)(ddec)(place), label={[font=\scriptsize\bfseries]above:\textsc{CarbonShift} controller}]
+  (cs) {};
+\end{scope}
+
+% ---- Execution sites (right column) ----
+\node[site, right=20mm of cs.north east, yshift=6mm]  (s1) {Cloud site $s_1$};
+\node[site, below=3mm of s1]                            (s2) {Edge site $s_2$};
+\node[site, below=3mm of s2]                            (s3) {Edge site $s_3$};
+
+% ---- Metrics sink (bottom) ----
+\node[block, below=6mm of place, minimum width=60mm, fill=black!8]
+  (met) {Metrics: carbon (M1), SLA rate (M2), cold-start rate (M3), gCO\textsubscript{2}/slack (M4)};
+
+% ---- Arrows: signals -> observer ----
+\draw[arr] (em) -- node[lbl] {$\mu_s(t)$} (obs.west);
+\draw[arr] (wt) -- (obs.west);
+\draw[arr] (fc) -- node[lbl, xshift=4mm] {$\hat\mu_s$} (obs.west);
+
+% ---- Arrows: invocations -> decision ----
+\draw[arr] (inv) -| (ddec.north);
+
+% ---- Arrows: within controller ----
+\draw[arr] (obs) -- (warm);
+\draw[arr] (warm) -- (ddec);
+\draw[arr] (ddec) -- node[lbl, right, xshift=1mm] {defer?} (place);
+\draw[arr] (ddec.east) -- ++(8mm,0) node[font=\scriptsize, right] {no$\Rightarrow$ admit now};
+
+% ---- Arrows: placement -> sites ----
+\draw[arr] (place.east) -- ++(6mm,0) |- (s1.west);
+\draw[arr] (place.east) -- ++(6mm,0) |- (s2.west);
+\draw[arr] (place.east) -- ++(6mm,0) |- (s3.west);
+
+% ---- Arrows: warm state feedback from sites ----
+\draw[arr, dashed] (s1.east) -- ++(5mm,0) |- (warm.east);
+\draw[arr, dashed] (s2.east) -- ++(5mm,0) |- (warm.east);
+
+% ---- Arrows: sites -> metrics ----
+\draw[arr] (s1) |- (met.east);
+\draw[arr] (s2) |- (met.east);
+
+% ---- Legend ----
+\node[draw, rounded corners=2pt, fill=white, font=\scriptsize, inner sep=2pt,
+      anchor=north west] at (met.south west)
+  (lg) {\begin{tabular}{@{}ll@{}}
+   \tikz\draw[->,line width=0.4pt](0,0)--(3mm,0); & data/control \\
+   \tikz\draw[->,dashed,line width=0.4pt](0,0)--(3mm,0); & warm-state feedback
+  \end{tabular}};
+
+\end{tikzpicture}%
+}%
+\caption{The \textsc{CarbonShift} framework. External marginal-intensity
+signals (left) and FaaS invocations (top) enter the controller, which
+observes current and forecast marginal intensity, tracks the warm/cold
+and embodied-cost state of each eligible site, decides whether the
+slack admits deferral, and commits the placement minimising the carbon
+quote of Eq.~\eqref{eq:quote} to a cloud or edge site (right). Dashed
+arrows return the warm-state feedback that drives embodied amortisation.}
+\label{fig:framework}
+\end{figure}

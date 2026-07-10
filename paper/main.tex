@@ -1,0 +1,61 @@
+\documentclass[runningheads]{llncs}
+
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{placeins}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc,fit,shapes.geometric,backgrounds}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.17}
+
+% Springer eBook style for hyperref
+\usepackage{color}
+\renewcommand\UrlFont{\color{blue}\rmfamily}
+\urlstyle{rm}
+
+\begin{document}
+
+\title{Marginal-Carbon-Aware Deferral of Deadline-Elastic Serverless
+Workloads in the Cloud--Edge Continuum}
+
+\titlerunning{Marginal-Carbon Serverless Deferral}
+
+\author{Anonymous Author(s)\inst{1}}
+\authorrunning{Anonymous Author(s)}
+
+\institute{Anonymous Affiliation, Anonymous Country\\
+\email{anonymous@example.org}}
+
+\maketitle
+
+\begin{abstract}
+The carbon footprint of cloud service systems keeps climbing, and carbon-aware scheduling has earned a place on the green-ICT agenda. Today's orchestrators defer deadline-elastic serverless jobs to hours when the local grid looks clean. Two assumptions sit inside that practice, and both are wrong. Average grid carbon intensity tracks the average electron---not the marginal generator that ramps to meet an incremental load---so it mislabels deferral targets and can push emissions up rather than down. Long-run renewable-share forecasts, meanwhile, smooth over the short weather-driven surplus windows that follow ramp events, the very hours when deferral pays off. \textsc{CarbonShift} attacks both problems at once. It schedules deadline-tolerant Function-as-a-Service workloads on a real-time marginal carbon-intensity signal, searches a short forecast band for imminent renewable surplus, and charges an embodied-carbon term---amortized per served request---whenever an edge instance is reused instead of cold-started. Cast as online deferral against an offline optimum that knows the full marginal-intensity trajectory, the problem admits a competitive-ratio guarantee that survives forecast error. The bound is tight on adversarial intensity sequences; on the bounded-variation sequences real grids exhibit, it collapses to a small constant. A slack threshold below which deferral is unsafe is derived, and we prove that no workload can game the marginal signal by inflating its reported deadline. The experimental study pairs public marginal-intensity traces with public FaaS invocation traces on an open serverless platform, measuring emissions, SLA compliance, and cold-start cost against four baselines.
+
+\keywords{Green ICT  \and Serverless computing  \and Marginal carbon intensity  \and Online scheduling  \and Cloud--edge continuum.}
+\end{abstract}
+
+\input{sections/introduction}
+\input{sections/background}
+\input{sections/model}
+\input{sections/algorithm}
+\input{sections/experiments}
+\input{sections/related}
+\input{sections/conclusion}
+
+\begin{credits}
+\subsubsection{\ackname} The authors have no competing interests to declare that are relevant to the content of this article.
+\end{credits}
+
+\bibliographystyle{splncs04}
+\bibliography{refs}
+
+\end{document}

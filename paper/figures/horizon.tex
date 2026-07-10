@@ -1,0 +1,49 @@
+\begin{figure}[tb]
+\centering
+\begin{tikzpicture}
+\begin{axis}[
+  width=0.92\columnwidth, height=5.2cm,
+  xlabel={Forecast horizon $H$ (5-min slots)}, ylabel={Normalised carbon (Greedy = 1.0)},
+  xmin=0, xmax=25, ymin=0.55, ymax=1.05,
+  xtick={0,3,6,9,12,15,18,21,24},
+  legend pos=north east, legend style={font=\scriptsize, draw=none},
+  legend cell align=left,
+  grid=both, grid style={dotted, black!20},
+  tick label style={font=\scriptsize}, label style={font=\scriptsize},
+]
+% Carbon (M1): U-shape, minimum near H=12 (left axis)
+\addplot[black, mark=*, mark size=1.4pt, line width=0.9pt] coordinates {
+ (0,1.00)(1,0.93)(3,0.84)(6,0.76)(9,0.71)(12,0.69)(15,0.71)(18,0.75)(21,0.80)(24,0.84)
+};
+\addlegendentry{Carbon (M1)}
+% SLA violation (M2): rises sharply once H exceeds slack (right axis)
+\end{axis}
+\begin{axis}[
+  width=0.92\columnwidth, height=5.2cm,
+  axis y line*=right, axis x line=none,
+  xmin=0, xmax=25, ymin=0, ymax=0.10,
+  ylabel={SLA violation rate (M2)},
+  ylabel style={font=\scriptsize}, tick label style={font=\scriptsize},
+  legend style={font=\scriptsize, draw=none, at={(0.98,0.78)}, anchor=north east},
+  legend cell align=left,
+]
+\addplot[black, dashed, mark=square*, mark size=1.2pt, line width=0.9pt] coordinates {
+ (0,0.000)(1,0.000)(3,0.001)(6,0.002)(9,0.004)(12,0.006)(15,0.014)(18,0.031)(21,0.048)(24,0.063)
+};
+\addlegendentry{SLA viol. (M2)}
+% Mark the slack boundary
+\draw[dotted, black!60] (axis cs:15,0) -- (axis cs:15,0.10);
+\node[font=\tiny] at (axis cs:15,0.092) {$d_j-\tau_j$};
+\end{axis}
+\end{tikzpicture}
+\caption{Effect of the forecast horizon $H$ on carbon (M1, solid, left
+axis) and SLA violation (M2, dashed, right axis), mock data consistent
+with Theorems~\ref{thm:cr-bv} and~\ref{thm:slack}. M1 follows a U-shape
+with the minimum near $H=12$ slots (one hour): shorter horizons miss
+the surplus window, longer horizons defer into uncertain territory.
+M2 stays near zero until $H$ exceeds the available slack $d_j-\tau_j$
+(dotted line), then rises sharply as the theorem predicts. The
+operator's knob is the horizon that hits the M1 minimum while keeping
+M2 under the tolerated $\varepsilon$.}
+\label{fig:horizon}
+\end{figure}

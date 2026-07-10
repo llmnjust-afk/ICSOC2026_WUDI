@@ -1,0 +1,33 @@
+# Data (downloadable via load_azure.py / API)
+worksheet/data/
+
+# Generated results & figures
+worksheet/results/
+worksheet/figures/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.eggs/
+*.egg-info/
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.run.xml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

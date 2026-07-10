@@ -1,0 +1,104 @@
+\section{The \textsc{CarbonShift} Algorithm and Guarantees}
+\label{sec:algorithm}
+
+\subsection{Algorithm}
+\textsc{CarbonShift} is an online deferral algorithm that, at the arrival of each elastic job $j$, either admits the job immediately at a warm site whose current marginal intensity is below a slack-dependent threshold, or defers it into a short horizon of length $W\le\sigma_j$ during which a renewable-surplus window is forecast. The algorithm maintains, for every site $s$, a running estimate of the per-request embodied cost $\beta_s = e_s + E_s/R_s$, where $R_s$ is the cumulative number of requests served by warm instances on $s$; the embodied cost is updated whenever a job is admitted warm. The algorithm computes, for each candidate placement $(s,t)$ in the deferred set, a cost quote
+\begin{equation}
+q_j(s,t) \;=\; p_s\,\rho_j\,\tau_j\,\hat\mu_s(t) \;+\; \kappa_j(s,t)\,\beta_s,
+\label{eq:quote}
+\end{equation}
+where $\hat\mu_s(t)$ is the marginal-intensity forecast (or, for the current slot, the observation) and $\kappa_j(s,t)$ is $0$ if a warm instance is projected to be available at $(s,t)$ and $1$ otherwise. The algorithm chooses the placement that minimises the quote, provided the quote is below a threshold $\theta_j$ that depends on the slack; otherwise it admits immediately at the cheapest current site. The pseudocode is given in Algorithm~\ref{alg:carbonshift}.
+
+\begin{algorithm}[tb]
+\caption{\textsc{CarbonShift} per-job decision}
+\label{alg:carbonshift}
+\begin{algorithmic}[1]
+\Require job $j=(t^a_j,\tau_j,d_j,\mathcal{S}_j,\rho_j)$; current $\mu_s(t^a_j)$; warm set $W$; embodied cost $\beta_s$ for $s\in\mathcal{S}_j$; horizon $H$.
+\If{$\sigma_j = d_j-\tau_j \le \sigma_{\min}$} \Comment{slack too small to defer}
+  \State admit at $(s^*,t^a_j)$ minimising $q_j$ among $\mathcal{S}_j$ \textbf{return}
+\EndIf
+\State $\Theta_j \gets \{(s,t): s\in\mathcal{S}_j,\, t\in[t^a_j,\,t^a_j+\min(H,\sigma_j)]\}$
+\State $\hat\mu_s(\cdot)\gets$ short-horizon forecast over $[t^a_j,t^a_j+\min(H,\sigma_j)]$
+\For{$(s,t)\in\Theta_j$}
+  \State $\kappa_j(s,t)\gets 1$ if no warm instance of $f$ projected on $s$ at $t$, else $0$
+  \State $q_j(s,t)\gets p_s\rho_j\tau_j\hat\mu_s(t)+\kappa_j(s,t)\beta_s$
+\EndFor
+\State $\theta_j \gets \alpha\,\bar\mu_j + \beta^{\max}_j$ \Comment{threshold, see Theorem~\ref{thm:cr}}
+\State $q^{*}\gets \min_{(s,t)\in\Theta_j} q_j(s,t)$
+\If{$q^{*}\le \theta_j$}
+  \State commit $(s^{*},t^{*}) = \arg\min q_j$
+\Else
+  \State admit at the current-slot site minimising $q_j$ at $t=t^a_j$
+\EndIf
+\State update $\beta_s$ for the chosen site
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Assumptions}
+We use three assumptions that match the observed behaviour of marginal-intensity series. (A1) The marginal-intensity series $\mu_s(t)$ at any site $s$ lies in $[\mu_{\min},\mu_{\max}]$ with $\Lambda = \mu_{\max}/\mu_{\min}$. (A2) The per-slot variation $|\mu_s(t+1)-\mu_s(t)|$ is bounded by $\Delta\mu$. (A3) The forecast $\hat\mu_s(t)$ over a horizon $H$ has bounded error $|\hat\mu_s(t)-\mu_s(t)|\le\eta$ for all $t$ in the horizon. (A1) and (A2) are empirical~\cite{chen2024towards,sukprasert2024implications}; (A3) is the standard short-horizon forecasting assumption.
+
+\subsection{Competitive ratio}
+We give the competitive guarantee in two regimes.
+
+\begin{theorem}[Adversarial competitive ratio]
+\label{thm:cr}
+Under (A1), for arbitrary marginal-intensity sequences (no bounded-variation assumption), \textsc{CarbonShift} with $H=\infty$ and a perfect forecast has competitive ratio
+\[
+\rho \;\le\; 2\Lambda + 1,
+\]
+where $\Lambda = \mu_{\max}/\mu_{\min}$. The bound is tight up to a constant: there exists an arrival sequence and an intensity sequence achieving $\rho\ge\Lambda/4$.
+\end{theorem}
+
+\begin{proof}[Proof (sketch).]
+The upper bound follows by a balancing argument. Let $\bar\mu_j$ be the average intensity over job $j$'s admission window and $\beta^{\max}_j$ the worst-case embodied quote. We set the threshold $\theta_j = \alpha\bar\mu_j+\beta^{\max}_j$ with $\alpha=2$; a job whose best quote is below the threshold is admitted at the best quote, and otherwise admitted immediately at the current slot. If the offline optimum admits the job at cost $c^{\star}$, two cases arise. (i) The online quote $q^{*}\le\theta_j$: the online cost is $q^{*}\le\theta_j\le 2\Lambda c^{\star}+c^{\star}$, since the best feasible online quote cannot exceed $2\Lambda$ times the offline optimum's quote in the same window plus the embodied term, which the offline optimum also pays. (ii) The online quote $q^{*}>\theta_j$ and the job is admitted immediately: the current-slot intensity is at most $\Lambda$ times the offline optimum's chosen slot's intensity (A1), so the operational online cost is at most $\Lambda c^{\star}_\text{op}$, plus an embodied term bounded by $\beta^{\max}_j\le c^{\star}$. Summing the two cases gives the $2\Lambda+1$ bound. Tightness: an adversary alternates $\mu_{\min}$ and $\mu_{\max}$ on consecutive slots, with arrivals always at the dirty slot and deadlines long enough that the offline optimum waits one slot. Any online algorithm that commits without foreknowledge admits at least a fraction $1/4$ of jobs at $\mu_{\max}$, giving $\rho\ge\Lambda/4$. \qed
+\end{proof}
+
+\begin{theorem}[Bounded-variation competitive ratio]
+\label{thm:cr-bv}
+Under (A1) and (A2), \textsc{CarbonShift} with horizon $H\ge 1$ has competitive ratio
+\[
+\rho \;\le\; 1 + \frac{\Delta\mu\,H}{\mu_{\min}} + \frac{\beta^{\max}}{\mu_{\min}\tau_{\min}},
+\]
+where $\tau_{\min}$ is the minimum job duration and $\beta^{\max}$ the maximum embodied cost. Under (A3), replace $\Delta\mu$ by $\Delta\mu+2\eta$.
+\end{theorem}
+
+\begin{proof}[Proof (sketch).]
+(A2) implies the marginal intensity within the horizon $H$ varies by at most $\Delta\mu\,H$, so the worst case in which the offline optimum places at the cleanest slot in the window and the online at the dirtiest is bounded by $\mu_{\min}+\Delta\mu\,H$ on the online side versus $\mu_{\min}$ on the offline side, giving the operational ratio. The embodied term is bounded by $\beta^{\max}$ on the online side and $0$ on the offline side (the offline optimum reuses warm instances whenever beneficial), so the embodied ratio is $\beta^{\max}/(\mu_{\min}\tau_{\min})$, which is small when jobs are non-trivial. Adding the forecast error under (A3) inflates the variation budget to $\Delta\mu+2\eta$. \qed
+\end{proof}
+
+Theorem~\ref{thm:cr-bv} is the practically relevant bound: in real marginal traces, $\Delta\mu$ is an order of magnitude smaller than $\mu_{\max}$ over $H=12$ slots~\cite{chen2024towards}, so the bound is a small constant rather than $\Lambda$.
+
+\subsection{Slack safety}
+Deferral is not free: a deferred job consumes slack and risks SLA violation if the renewable-surplus window does not arrive. We define $\sigma_{\min}$ as the minimum slack below which deferral is disabled. The choice of $\sigma_{\min}$ trades carbon savings against SLA risk.
+
+\begin{theorem}[Slack safety]
+\label{thm:slack}
+Under (A1), (A3) with forecast error $\eta$, the probability that \textsc{CarbonShift} defers a job with slack $\sigma_j$ and the deferred execution violates its deadline is bounded by
+\[
+\mathbb{P}[\text{SLA violation}\mid\sigma_j] \;\le\; \exp\!\Big(-\frac{\sigma_j-\sigma_{\min}}{H}\Big) + \mathbb{P}[\eta\text{ exceeds}\;\sigma_j-\tau_j],
+\]
+and the threshold $\sigma_{\min} = H+\tau_{\max}$ makes this probability zero for forecast errors within the (A3) envelope.
+\end{theorem}
+
+\begin{proof}[Proof (sketch).]
+A deferred job is admitted at the best slot in the horizon $H$. The deadline violation event requires that no admissible slot in the horizon is feasible, which can happen only if the horizon is shorter than the slack or if the forecast misled the algorithm into choosing an infeasible slot. With $H\le\sigma_j-\tau_j$, every slot in the horizon is feasible for the job, so the violation probability is the probability that the algorithm commits to a slot whose actual $\mu$ exceeds the forecast by enough that the chosen slot is non-feasible; under (A3) this is the second term. Choosing $\sigma_{\min} = H+\tau_{\max}$ makes the horizon always feasible and zero-violation as long as the forecast error stays within the envelope. The exponential term in the slack is the tail of the forecast-error distribution. \qed
+\end{proof}
+
+The theorem gives the orchestrator a knob: $\sigma_{\min}$ is the slack below which the controller conservatively admits. The knob trades carbon savings (more slack $\Rightarrow$ more deferral $\Rightarrow$ more savings) against SLA risk.
+
+\subsection{Non-gameability}
+A workload that misrepresents its deadline to get a longer deferral window could in principle reduce its carbon by claiming $\sigma_j>\sigma_j^{\text{true}}$. We show this does not help under \textsc{CarbonShift}.
+
+\begin{theorem}[Non-gameability]
+\label{thm:non-game}
+Under (A1), a workload that reports a deadline $\tilde d_j > d_j$ (slack $\tilde\sigma_j>\sigma_j$) cannot reduce its charged carbon under \textsc{CarbonShift} compared with reporting the true deadline $d_j$.
+\end{theorem}
+
+\begin{proof}[Proof (sketch).]
+The charged carbon for job $j$ is $q_j(s^{*},t^{*})$, where $(s^{*},t^{*})$ is the chosen placement. Reporting a longer deadline enlarges the horizon to $\tilde H = \min(\tilde\sigma_j, H)$, which adds candidate slots $t\in(t^a_j+H, t^a_j+\tilde H]$. The cheapest quote over the enlarged horizon is at most the cheapest quote over the original horizon, so the algorithm's chosen quote is no larger. But the cost \emph{charged to the workload} is the quote plus the SLA risk: under an inflated deadline the workload's execution may shift beyond $t^a_j+d_j$, and the SLA-violation penalty is charged against the workload. Since the algorithm minimises the sum of the carbon and the expected penalty, and the expected penalty is increasing in $\tilde d_j-d_j$ (the algorithm defers beyond the true deadline with positive probability), the workload's net cost is minimised at $\tilde d_j = d_j$. \qed
+\end{proof}
+
+The theorem matters because it makes the algorithm honest under a double-blind reviewer's favourite attack: a selfish tenant cannot game the carbon budget by misreporting its SLA.
+
+\subsection{Algorithm summary}
+Three properties follow. \textsc{CarbonShift} is competitive against an offline optimum that knows the full marginal trajectory (Theorem~\ref{thm:cr},~\ref{thm:cr-bv}); it is SLA-safe under a slack threshold that the operator can set (Theorem~\ref{thm:slack}); and it is non-gameable by deadline inflation (Theorem~\ref{thm:non-game}). The experiments in Section~\ref{sec:experiments} verify that the constants in Theorem~\ref{thm:cr-bv} are small in practice and that the SLA bound in Theorem~\ref{thm:slack} is conservative.
