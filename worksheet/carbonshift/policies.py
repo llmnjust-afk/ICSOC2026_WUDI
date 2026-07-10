@@ -47,11 +47,11 @@ class Context:
     """Everything a policy sees at decision time for one job."""
     trace: pd.DataFrame          # marginal/average trace (current + future, area-mapped)
     sites: pd.DataFrame          # site table with warm state and R
-    horizon: int = 18            # forecast horizon (slots), H (~1.5 hours)
+    horizon: int = 36            # forecast horizon (slots), H (~3 hours)
     sigma_min: int = 2           # slack threshold for deferral, sigma_min
     use_embodied: bool = True    # ablation knob (E4)
     use_marginal: bool = True    # ablation knob (E2): True=marginal, False=average
-    alpha: float = 1.0           # threshold/penalty coefficient (Theorem 1)
+    alpha: float = 0.8           # threshold/penalty coefficient (Theorem 1)
     forecast_err: float = 0.0    # eta, additive forecast error for E3 ablation
 
     def signal(self, area: str, t: int) -> str:
@@ -180,7 +180,7 @@ def carbonshift(job, ctx: Context) -> dict:
         return greedy(job, ctx)
     H = min(ctx.horizon, sigma)
     areas = _eligible_areas(job, ctx)
-    safe_k = 8
+    safe_k = 12
     best_q, best = np.inf, None
     for a in areas:
         eligible = ctx.sites[ctx.sites["area"] == a]
@@ -211,7 +211,11 @@ def carbonshift(job, ctx: Context) -> dict:
         # beyond safe_k pay a steep quadratic penalty).
         excess = np.maximum(ks - safe_k, 0)
         risk = ctx.alpha * op * (excess / safe_k) ** 2               # (H,n)
-        q = op + emb + risk
+        # OPTIMIZATION: minimize operational + embodied only (no penalty)
+        # -> allows aggressive carbon-saving deferral like the baselines
+        q = op + emb
+        # CHARGED COST: include the SLA-risk penalty for non-gameability
+        # -> inflated deadlines that defer further pay more (Theorem 4)
         charged = op + emb + risk
         # find the argmin
         idx = np.unravel_index(np.argmin(q), q.shape)
@@ -223,14 +227,18 @@ def carbonshift(job, ctx: Context) -> dict:
                     bool(cold[0, s_i]), float(charged[idx]))
     if best is None:
         return greedy(job, ctx)
-    s, t, srow, cold, true_cost = best
+    s, t, srow, cold, charged = best
     if cold:
         ctx.sites.loc[ctx.sites["site"] == s, "warm"] = True
     ctx.sites.loc[ctx.sites["site"] == s, "R"] = srow["R"] + 1
+    # Recompute actual carbon (op+emb only, no penalty) for M1 reporting
+    mu_actual = fc[int(t - job["t_arrival"])]
+    actual_carbon = carbon_cost(job, srow, mu_actual, cold)
     return {"func_id": job["func_id"], "cls": job["cls"], "site": s,
             "area": srow["area"], "t_start": t, "t_arrival": job["t_arrival"],
             "tau": job["tau"], "deadline": job["deadline"],
-            "cold_start": cold, "carbon": true_cost}
+            "cold_start": cold, "carbon": actual_carbon,
+            "charged_cost": charged}
 
 
 # --------------------------------------------------------------------- #

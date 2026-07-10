@@ -171,7 +171,9 @@ def e6_gameability(days: int = 3, n_funcs: int = 80, seed: int = 7) -> pd.DataFr
     for label, inv in [("honest", inv_honest), ("inflated", inv_inflated)]:
         r = run_policy("CarbonShift", inv, trace)
         m = metrics(r, greedy_carbon=g_carbon)
-        rows.append({"report": label, **m})
+        # Use charged_cost (includes SLA-risk penalty) for non-gameability
+        charged_total = r["charged_cost"].sum() if "charged_cost" in r.columns else m["total_carbon"]
+        rows.append({"report": label, **m, "charged_total": charged_total})
     return pd.DataFrame(rows)
 
 
