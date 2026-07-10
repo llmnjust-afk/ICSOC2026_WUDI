@@ -51,7 +51,7 @@ class Context:
     sigma_min: int = 2           # slack threshold for deferral, sigma_min
     use_embodied: bool = True    # ablation knob (E4)
     use_marginal: bool = True    # ablation knob (E2): True=marginal, False=average
-    alpha: float = 1.5           # threshold/penalty coefficient (Theorem 1)
+    alpha: float = 1.0           # threshold/penalty coefficient (Theorem 1)
     forecast_err: float = 0.0    # eta, additive forecast error for E3 ablation
 
     def signal(self, area: str, t: int) -> str:
@@ -180,7 +180,7 @@ def carbonshift(job, ctx: Context) -> dict:
         return greedy(job, ctx)
     H = min(ctx.horizon, sigma)
     areas = _eligible_areas(job, ctx)
-    safe_k = 6
+    safe_k = 8
     best_q, best = np.inf, None
     for a in areas:
         eligible = ctx.sites[ctx.sites["area"] == a]
@@ -205,7 +205,12 @@ def carbonshift(job, ctx: Context) -> dict:
             emb = np.zeros((1, n_sites))
         emb = np.broadcast_to(emb, (H, n_sites))
         ks = np.arange(H).reshape(H, 1)
-        risk = ctx.alpha * op * (ks / safe_k) ** 2                    # (H,n)
+        # Free deferral within safe_k; quadratic penalty BEYOND safe_k only.
+        # This allows beneficial carbon deferral in the safe range while
+        # ensuring non-gameability (inflated deadlines that push k far
+        # beyond safe_k pay a steep quadratic penalty).
+        excess = np.maximum(ks - safe_k, 0)
+        risk = ctx.alpha * op * (excess / safe_k) ** 2               # (H,n)
         q = op + emb + risk
         charged = op + emb + risk
         # find the argmin
