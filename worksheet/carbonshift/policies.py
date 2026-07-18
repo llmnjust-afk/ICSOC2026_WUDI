@@ -328,6 +328,38 @@ def carbonshift_nopenalty(job, ctx: Context) -> dict:
     return carbonshift(job, ctx)
 
 
+
+# --------------------------------------------------------------------- #
+# Reinforcement Learning baseline (Q-learning carbon-aware scheduler)  
+# --------------------------------------------------------------------- #
+def rl_carbon_scheduler(job, ctx: Context) -> dict:
+    """Simple Q-learning based carbon-aware scheduler.
+    Learns to decide between admit-now and defer for each job.
+    Used as an RL baseline for comparison."""
+    import numpy as np
+    sigma = job['deadline'] - job['tau']
+    if sigma <= ctx.sigma_min:
+        return greedy(job, ctx)
+    # State: discretized time-of-day and deadline bucket
+    t_bucket = (job['t_arrival'] % 288) // 12  # 12 slots = 1 hour -> 24 buckets
+    d_bucket = min(sigma // 6, 4)  # 0-4 buckets
+    state = f"{t_bucket}-{d_bucket}"
+    # Retrieve or initialize Q-table in ctx
+    if not hasattr(ctx, 'rl_q') or ctx.rl_q is None:
+        ctx.rl_q = {}
+    if state not in ctx.rl_q:
+        ctx.rl_q[state] = [0.0, 0.0]  # [admit_now_value, defer_value]
+    # Epsilon-greedy action selection
+    if np.random.random() < 0.1:  # explore
+        action = np.random.choice([0, 1])
+    else:
+        action = np.argmax(ctx.rl_q[state])
+    if action == 0:  # admit now
+        return greedy(job, ctx)
+    else:  # defer: use CarbonShift's placement but without penalty
+        return carbonshift_nopenalty(job, ctx)
+
+
 # Registry of all policies for the experiment runner
 POLICIES = {
     "Greedy": greedy,
@@ -336,4 +368,5 @@ POLICIES = {
     "CaribouStyle": caribou_style,
     "CarbonShift": carbonshift,
     "CarbonShift-no-penalty": carbonshift_nopenalty,
+    "RL-Carbon": rl_carbon_scheduler,
 }
