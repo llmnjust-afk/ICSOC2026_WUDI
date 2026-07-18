@@ -1,68 +1,11 @@
-\section{Problem Model and Offline Optimum}
+\section{Problem Model}
 \label{sec:model}
 
-\subsection{System and workload}
-We model the cloud--edge continuum as a set $\mathcal{S}$ of execution sites. A site $s\in\mathcal{S}$ has a power coefficient $p_s$ (W per allocated core), an embodied carbon budget $E_s$ (kgCO\textsubscript{2}e) amortised over the expected service lifetime of an instance, and a cold-start carbon $e_s$ (kgCO\textsubscript{2}e) paid once per instance creation. Time is slotted; we write $t$ for a slot and assume slots are short enough that a function's execution fits within a small number of them. The marginal carbon intensity at site $s$ in slot $t$ is $\mu_s(t)$ (gCO\textsubscript{2}e/kWh), supplied by a real-time marginal-signal service and observed by the orchestrator only for the current and past slots. The offline optimum additionally observes $\mu_s(\cdot)$ for all future slots.
+We model the continuum as a set $\mathcal{S}$ of sites, each with power $p_s$ (W/core), embodied budget $E_s$ (kgCO\textsubscript{2}e), and cold-start carbon $e_s$. Time is slotted (5~min). The marginal intensity at site $s$ in slot $t$ is $\mu_s(t)$ (gCO\textsubscript{2}e/kWh). The workload is a sequence of FaaS invocations $j=(t^a_j, \tau_j, d_j, \mathcal{S}_j, \rho_j)$. A placement is $(s_j,t_j)$ with $s_j\in\mathcal{S}_j$ and $t_j\in[t^a_j, t^a_j+d_j-\tau_j]$.
 
-The workload is a sequence of FaaS invocations $\mathcal{J} = \{1,\dots,n\}$, each invocation $j$ described by a tuple $j=(t^a_j, \tau_j, d_j, \mathcal{S}_j, \rho_j)$: an arrival slot $t^a_j$, an execution duration $\tau_j$ (slots), a deadline $d_j$ measured relative to $t^a_j$ so that execution must complete by $t^a_j+d_j$, an eligible site set $\mathcal{S}_j\subseteq\mathcal{S}$, and a per-slot resource request $\rho_j$ (cores). The deadline is interpreted as an SLA: a job that is not executed within its window is dropped, incurring an SLA-violation penalty. We write the slack of a job as $\sigma_j = d_j - \tau_j$; a job is deadline-elastic iff $\sigma_j>0$, and only elastic jobs can be deferred.
-
-A placement decision for job $j$ is a pair $(s_j, t_j)$: a site $s_j\in\mathcal{S}_j$ and a start slot $t_j\in[t^a_j, t^a_j+d_j-\tau_j]$. A feasible placement respects the deadline, the eligible-site set, and the site's capacity. We assume sites are capacity-sufficient in expectation, so that feasibility is governed by the deadline and the eligible set; capacity contention enters as a secondary constraint handled by the orchestration layer beneath the scheduler.
-
-\subsection{Carbon cost}
-The carbon of executing job $j$ through placement $(s_j,t_j)$ is
+The carbon of executing $j$ is
 \begin{equation}
-C_j(s_j,t_j) \;=\; \underbrace{p_{s_j}\,\rho_j\,\tau_j\,\mu_{s_j}(t_j)}_{\text{operational}} \;+\; \underbrace{\kappa_j\,\Big(e_{s_j}+\tfrac{E_{s_j}}{R_{s_j}}\Big)}_{\text{embodied amortised per request}},
+C_j(s_j,t_j)=p_{s_j}\rho_j\tau_j\mu_{s_j}(t_j)+\kappa_j\big(e_{s_j}+\tfrac{E_{s_j}}{R_{s_j}}\big),
 \label{eq:cost}
 \end{equation}
-where the operational term is the marginal-intensity-weighted energy and the embodied term is charged only when a new instance must be created. The indicator $\kappa_j\in\{0,1\}$ is $1$ if the job incurs a cold start and $0$ otherwise, and $R_{s_j}$ is the expected number of requests the instance will serve over its warm lifetime. The reuse decision is a scheduler output: a job that arrives at a warm instance of its function on the chosen site pays $\kappa_j=0$; a job that arrives cold pays $\kappa_j=1$. Treating $\kappa_j$ as a decision (rather than an exogenous draw) is the lever through which the scheduler amortises embodied carbon: by preferring warm sites, it drives $R_{s_j}$ up and the per-request embodied term down.
-
-\subsection{The online problem}
-The orchestrator processes invocations in arrival order. At the arrival slot of job $j$ the orchestrator observes $\mu_s(t)$ for all $s\in\mathcal{S}_j$ for the current and past slots, plus the warm/cold state of eligible sites; it then commits a placement $(s_j,t_j)$ irrevocably. Future $\mu_s(\cdot)$ and future arrivals are unknown at decision time; the orchestrator may, in some variants, request a short-horizon forecast of $\mu_s$ with bounded error. The objective is to minimise the total carbon of accepted jobs subject to a constraint on the SLA-violation rate:
-\begin{equation}
-\min \;\sum_{j\in\mathcal{J}} C_j(s_j,t_j)
-\quad\text{s.t.}\quad
-\frac{|\{j : t_j+\tau_j > t^a_j+d_j\}|}{|\mathcal{J}|} \;\le\; \varepsilon,
-\label{eq:objective}
-\end{equation}
-where $\varepsilon$ is the tolerated SLA-violation rate. The online algorithm must respect~\eqref{eq:objective} in expectation; the competitive guarantee is on the cost.
-
-\subsection{Offline optimum}
-The offline optimum $\mathsf{OPT}$ knows the full marginal-intensity trajectory $\{\mu_s(t)\}$, the full arrival sequence, and the embodied-amortisation schedule of every site, and solves~\eqref{eq:objective} over the entire horizon. The offline optimum is at least as good as any online algorithm, so we measure an online algorithm by the competitive ratio
-\[
-\rho = \sup_{\mathcal{J},\mu}\;\frac{\mathbb{E}[\textstyle\sum_j C_j(\text{online})]}{\textstyle\sum_j C_j(\mathsf{OPT})}.
-\]
-The competitive ratio is taken over the worst-case arrival and intensity sequence; forecasts, when used, are treated as advice whose error the algorithm must survive.
-
-Table~\ref{tab:notation} consolidates the notation used through Sections~\ref{sec:model}--\ref{sec:experiments}.
-
-\begin{table}[tb]
-\centering
-\caption{Notation. Site-level quantities are per $s\in\mathcal{S}$; job-level per $j\in\mathcal{J}$.}
-\label{tab:notation}
-\small
-\begin{tabular}{@{}lll@{}}
-\toprule
-Symbol & Domain & Meaning \\
-\midrule
-$\mathcal{S},\mathcal{J}$ & sets & execution sites; FaaS invocations \\
-$t$ & slot & scheduling slot (5~min) \\
-$p_s, E_s, e_s$ & site & power (W/core); embodied budget; cold-start C \\
-$R_s, \beta_s$ & site & warm-lifetime requests; per-request embodied cost \\
-$\mu_s(t),\hat\mu_s(t)$ & site & marginal intensity; forecast (gCO\textsubscript{2}e/kWh) \\
-$\Lambda$ & const & $\mu_{\max}/\mu_{\min}$, intensity swing \\
-$\Delta\mu,\eta$ & const & per-slot variation; forecast error bound \\
-$t^a_j,\tau_j,d_j$ & job & arrival slot; duration; relative deadline \\
-$\sigma_j$ & job & slack $d_j-\tau_j$; elastic iff $>0$ \\
-$\sigma_{\min}$ & const & slack threshold for deferral \\
-$\mathcal{S}_j,\rho_j$ & job & eligible site set; per-slot cores \\
-$\kappa_j$ & $\{0,1\}$ & cold-start indicator (0 if warm) \\
-$(s_j,t_j)$ & dec & committed placement \\
-$C_j,q_j$ & cost & charged carbon (Eq.~\eqref{eq:cost}); quote (Eq.~\eqref{eq:quote}) \\
-$H$ & const & forecast horizon (slots) \\
-$\varepsilon$ & const & tolerated SLA-violation rate \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{Why this is a new problem}
-Three features distinguish this formulation from prior carbon-aware shifting. First, the carbon charged to a placement is the \emph{marginal} intensity at execution time, not the average; this is the quantity that responds to the load change caused by the placement itself. Second, the embodied term is amortised per served request and is exposed to the scheduler through the reuse decision $\kappa_j$, so the scheduler jointly optimises operational and embodied carbon. Third, the offline optimum is defined on the marginal trajectory, so the competitive guarantee is a guarantee on the emissions actually attributable to the algorithm, not on a proxy. These three features are absent from the nearest formulations~\cite{asadov2025carbonaware,gsteiger2024caribou,lechowicz2024learningaugmented}, which use the average signal, ignore embodied cost, or analyse variants of the problem without the deadline-and-deferral structure that FaaS imposes. Section~\ref{sec:algorithm} gives the algorithm and the guarantees.
+where $\kappa_j\in\{0,1\}$ indicates a cold start and $R_{s_j}$ the expected warm-lifetime requests. The orchestrator observes $\mu_s$ for the current slot and commits placements irrevocably. The objective is $\min\sum_j C_j(s_j,t_j)$ subject to an SLA-violation bound $\varepsilon$. The offline optimum $\mathsf{OPT}$ knows the full $\mu_s(\cdot)$ trajectory. The online algorithm is measured by the competitive ratio $\rho = \sup_{\mathcal{J},\mu}\mathbb{E}[\sum_j C_j(\text{online})]/\sum_j C_j(\mathsf{OPT})$.
