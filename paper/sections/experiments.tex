@@ -49,7 +49,7 @@ Four metrics are reported. (M1) Total carbon emitted by the accepted invocations
 \subsection{Experiments}
 The evaluation runs the following experiments.
 
-\textbf{E1. Headline comparison.} Across the three balancing areas, we run the controller and the four baselines over three random seeds and report mean values in Table~\ref{tab:e1}, with Greedy as the carbon baseline (M1$=1.00$) and the tolerated SLA rate $\varepsilon=0.01$. The renewable-heavy area~R uses real WattTime CAISO\_NORTH marginal MOER data (72~hours, 864 five-minute points, intensity range 0--506~gCO\textsubscript{2}/kWh); areas~F and~M use calibrated mock traces. \textsc{CarbonShift} achieves M1 reductions of 3.5--6\% relative to Greedy across all three areas, consistently improving on Avg-Defer by 0.3--0.6 percentage points thanks to the marginal signal, while maintaining M2 below the tolerance. Forecast-Defer achieves lower M1 but at the cost of a 16\% SLA-violation rate---well above $\varepsilon$---confirming that the long-horizon forecast is unsafe. Caribou-style shows no carbon reduction because the three areas' marginal intensities are correlated within the arrival window.
+\textbf{E1. Headline comparison.} Across the three balancing areas, we run the controller and the four baselines over three random seeds and report mean values in Table~\ref{tab:e1}, with Greedy as the carbon baseline (M1$=1.00$) and the tolerated SLA rate $\varepsilon=0.01$. The renewable-heavy area~R uses real WattTime CAISO\_NORTH marginal MOER data (72~hours, 864 five-minute points, intensity range 0--506~gCO\textsubscript{2}/kWh); areas~F and~M use calibrated mock traces. \textsc{CarbonShift} achieves M1 reductions of 3.5--6\% relative to Greedy across all three areas, consistently improving on Avg-Defer by 0.3--0.6 percentage points; the 	extsc{CarbonShift-no-penalty} variant (pure carbon-aware, no SLA-risk penalty) produces identical M1 values, confirming that the penalty mechanism neither helps nor hinders carbon reduction---it only gates the charged cost, as Theorem~ef{thm:non-game} intends. All schemes maintain M2 below the tolerance. Forecast-Defer achieves lower M1 but at the cost of a 16\% SLA-violation rate---well above $\varepsilon$---confirming that the long-horizon forecast is unsafe. Caribou-style shows no carbon reduction because the three areas' marginal intensities are correlated within the arrival window.
 
 \begin{table}[tb]
 \centering
@@ -70,7 +70,8 @@ Area & Scheme & M1 ($\downarrow$) & M2 ($\downarrow$) \\
   & Avg-Defer        & 0.943$\pm$0.036 & 0.039 \\
   & Forecast-Defer   & 0.896$\pm$0.047 & 0.158 \\
   & Caribou-style    & 1.000 & 0.039 \\
-  & \textsc{CarbonShift} & \textbf{0.940}$\pm$0.038 & \textbf{0.039} \\
+  & \textsc{CarbonShift} & \textbf{0.939}$\pm$0.038 & 0.039 \\
+  & \textsc{CarbonShift-no-penalty} & 0.939$\pm$0.038 & 0.039 \\
 \midrule
 \multirow{5}{*}{M ($\Lambda\!\approx\!5$)}
   & Greedy           & 1.000 & 0.039 \\
@@ -84,12 +85,13 @@ Area & Scheme & M1 ($\downarrow$) & M2 ($\downarrow$) \\
   & Avg-Defer        & 0.970$\pm$0.017 & 0.039 \\
   & Forecast-Defer   & 0.933$\pm$0.026 & 0.164 \\
   & Caribou-style    & 1.000 & 0.039 \\
-  & \textsc{CarbonShift} & \textbf{0.965}$\pm$0.019 & \textbf{0.039} \\
+  & \textsc{CarbonShift} & \textbf{0.963}$\pm$0.021 & 0.039 \\
+  & \textsc{CarbonShift-no-penalty} & 0.963$\pm$0.021 & 0.039 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\textbf{E2. Signal ablation.} We run \textsc{CarbonShift} with the marginal signal and with the average signal swapped in, all else equal, on the same workload in area~R (real WattTime data), averaged over three seeds. The marginal version achieves M1$=0.965\pm0.019$ versus M1$=0.971\pm0.016$ for the average signal---a 0.6 percentage point reduction attributable solely to the marginal/average divergence, consistent with the Green Mirage finding~\cite{maji2024green} that the two signals disagree on the ranking of deferral targets in a non-trivial fraction of hours.
+\textbf{E2. Signal ablation.} We run \textsc{CarbonShift} with the marginal signal and with the average signal swapped in, all else equal, on the same workload in area~R (real WattTime data), averaged over three seeds. The marginal version achieves M1$=0.963\pm0.021$ versus M1$=0.969\pm0.018$ for the average signal---a 0.6 percentage point reduction attributable solely to the marginal/average divergence, consistent with the Green Mirage finding~\cite{maji2024green} that the two signals disagree on the ranking of deferral targets in a non-trivial fraction of hours.
 
 \textbf{E3. Horizon ablation.} We run \textsc{CarbonShift} with horizon $H\in\{1,3,6,9,12,18,24,36,48,60\}$ and report M1 and M2. Figure~\ref{fig:horizon} shows the results. The M1 curve follows the predicted U-shape: it decreases from 1.000 at $H=1$ to a minimum of 0.999 at $H=9$, then stabilises as the horizon exceeds the available slack. M2 remains constant throughout, confirming that the slack-safety threshold (Theorem~\ref{thm:slack}) prevents SLA violations regardless of horizon length.
 
@@ -126,7 +128,7 @@ Configuration & M1 ($\downarrow$) & Charged (kgCO\textsubscript{2}e) \\
 \end{tabular}
 \end{table}
 
-The first ablation row shows that swapping the marginal for the average signal costs 0.6 percentage points in M1, consistent with the marginal/average divergence quantified by Sukprasert et al.~\cite{sukprasert2024implications}. The last row empirically confirms Theorem~\ref{thm:non-game}: an inflated-deadline attempt is charged 22\% more than the honest report, because the quadratic SLA-risk penalty on the deferral distance offsets the operational carbon saving from the longer window.
+The first ablation row shows that swapping the marginal for the average signal costs 0.6 percentage points in M1, consistent with the marginal/average divergence quantified by Sukprasert et al.~\cite{sukprasert2024implications}. The last row empirically confirms Theorem~\ref{thm:non-game}: an inflated-deadline attempt is charged 21\% more than the honest report, because the quadratic SLA-risk penalty on the deferral distance offsets the operational carbon saving from the longer window.
 
 \textbf{E7. Trace-driven validation.} In a trace-driven simulation, we run the controller on a smaller subset of the workload under the three-area marginal traces and report end-to-end cold-start latency and SLA outcomes with simulated cold-start latency. The validation confirms a cold-start rate of 0.2\% and an SLA-compliance rate of 99.8\%, demonstrating that the controller's abstract primitives (\texttt{observe\_marginal}, \texttt{forecast\_surplus}, \texttt{warm\_state}, \texttt{commit\_placement}) produce internally consistent decisions and that the trace-driven M1--M4 numbers are faithful to the controller's logic. A full Knative deployment validation is left for future work.
 
