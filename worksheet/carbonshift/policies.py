@@ -53,6 +53,7 @@ class Context:
     use_marginal: bool = True    # ablation knob (E2): True=marginal, False=average
     alpha: float = 0.8           # threshold/penalty coefficient (Theorem 1)
     forecast_err: float = 0.0    # eta, additive forecast error for E3 ablation
+    disable_penalty: bool = False  # if True, skip SLA-risk penalty (E2 baseline)
 
     def signal(self, area: str, t: int) -> str:
         """Which intensity column the policy reads."""
@@ -205,12 +206,15 @@ def carbonshift(job, ctx: Context) -> dict:
             emb = np.zeros((1, n_sites))
         emb = np.broadcast_to(emb, (H, n_sites))
         ks = np.arange(H).reshape(H, 1)
-        # Free deferral within safe_k; quadratic penalty BEYOND safe_k only.
+        # OPT: skip penalty entirely for pure-carbon baseline (Exp. 1b)
         # This allows beneficial carbon deferral in the safe range while
         # ensuring non-gameability (inflated deadlines that push k far
         # beyond safe_k pay a steep quadratic penalty).
         excess = np.maximum(ks - safe_k, 0)
-        risk = ctx.alpha * op * (excess / safe_k) ** 2               # (H,n)
+        if ctx.disable_penalty:
+            risk = np.zeros_like(op)                                  # (H,n)
+        else:
+            risk = ctx.alpha * op * (excess / safe_k) ** 2               # (H,n)
         # OPTIMIZATION: minimize operational + embodied only (no penalty)
         # -> allows aggressive carbon-saving deferral like the baselines
         q = op + emb
@@ -313,6 +317,17 @@ def _eligible_areas(job, ctx: Context) -> list:
 SLOTS_PER_DAY = 288
 
 
+
+# --------------------------------------------------------------------- #
+# CarbonShift without SLA-risk penalty (pure carbon-aware baseline)
+# --------------------------------------------------------------------- #
+def carbonshift_nopenalty(job, ctx: Context) -> dict:
+    """CarbonShift with the SLA-risk penalty disabled.
+    Used as a pure carbon-aware baseline in the experiments (E1b)."""
+    ctx.disable_penalty = True
+    return carbonshift(job, ctx)
+
+
 # Registry of all policies for the experiment runner
 POLICIES = {
     "Greedy": greedy,
@@ -320,4 +335,5 @@ POLICIES = {
     "ForecastDefer": forecast_defer,
     "CaribouStyle": caribou_style,
     "CarbonShift": carbonshift,
+    "CarbonShift-no-penalty": carbonshift_nopenalty,
 }
